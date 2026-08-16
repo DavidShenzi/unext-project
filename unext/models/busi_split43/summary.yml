@@ -1,0 +1,8 @@
+best_epoch: 93
+best_iou: 0.608476699748354
+epochs_run: 150
+n_params: 1471921
+partial: true
+resumable_from: 149
+target_epochs: 400
+train_seconds: 1186.9

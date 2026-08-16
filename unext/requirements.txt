@@ -1,0 +1,15 @@
+# torch is intentionally NOT pinned here - you already have 2.11.0+cu128 installed,
+# which is the build that supports the RTX 5060 (Blackwell). Installing torch from
+# this file could downgrade you to a CPU-only or incompatible wheel.
+#
+#   pip install -r requirements.txt
+
+timm>=0.9.16
+albumentations>=1.4.0
+opencv-python>=4.9.0
+scikit-learn>=1.4.0
+pandas>=2.0.0
+pyyaml>=6.0
+tqdm>=4.66.0
+matplotlib>=3.8.0
+ptflops>=0.7.3

@@ -1,0 +1,5 @@
+best_epoch: 80
+best_iou: 0.5974613095992741
+epochs_run: 400
+n_params: 1471921
+train_seconds: 3329.9

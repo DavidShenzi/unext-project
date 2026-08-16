@@ -1,0 +1,51 @@
+# ---------------------------------------------------------------- data
+# BUSI must be downloaded from its original source (registration required);
+# redistributing it here would be both a licence problem and a 460 MB commit.
+Dataset_BUSI.zip
+raw/
+unext/inputs/
+
+# ---------------------------------------------------------------- weights
+# 262 MB of checkpoints. Every result they support is reproducible from
+# models/*/log.csv + config.yml, which ARE committed (738 KB total).
+# If a trained model is needed, share it via Drive, not git.
+*.pth
+*.pt
+*.ckpt
+
+# ---------------------------------------------------------------- raw stdout
+# 53 MB, almost all of it tqdm progress-bar spam ("12%|#2 | 1/8 ..." repeated
+# thousands of times). The per-epoch metrics are in models/*/log.csv instead.
+unext/train_*.log
+unext/_bench_*.log
+
+# ---------------------------------------------------------------- predicted masks
+# Regenerate with: python val.py --name <run>
+unext/outputs/
+
+# ---------------------------------------------------------------- upstream clone
+# Reference only; clone it yourself:
+#   git clone https://github.com/jeya-maria-jose/UNeXt-pytorch
+unext_upstream/
+
+# ---------------------------------------------------------------- python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ---------------------------------------------------------------- office / os
+~$*
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------------------------------------------------------------- editors
+.vscode/
+.idea/
+*.swp
+
+# paper PDF - linked in README instead of redistributed
+2203.04967v1.pdf

@@ -28,6 +28,18 @@ OUT = 'figures'
 os.makedirs(OUT, exist_ok=True)
 PAPER_IOU, PAPER_DICE = 0.6695, 0.7937
 
+# One colour per experimental condition, used identically in every figure, so the
+# audience learns the mapping once: blue = the paper's recipe / baseline, orange =
+# our augmentation fix, green = + Focal Tversky (our best), red = the paper's
+# claimed number we are chasing. Chosen to stay distinguishable in greyscale print
+# and under the common red-green colour-vision deficiencies.
+C_BASE = '#1f77b4'     # paper recipe / baseline
+C_AUG = '#ff7f0e'      # + strong augmentation
+C_FTL = '#2ca02c'      # + Focal Tversky (best)
+C_PAPER = '#d62728'    # the paper's reported target
+C_TRAIN = '#7f7f7f'    # training curves (context, not a condition)
+C_ALT = '#9467bd'      # other variants (SE, 512px, ...)
+
 
 def log(name):
     return pd.read_csv(f'models/{name}/log.csv')
@@ -37,21 +49,26 @@ def fig1_overfitting():
     """The single most important visual: train and val separating after ~ep100."""
     d = log('busi_split41')
     fig, ax = plt.subplots(figsize=(8, 4.5))
-    ax.plot(d.epoch, d.iou, color='black', lw=1.6, label='Train IoU')
-    ax.plot(d.epoch, d.val_iou, color='gray', lw=1.6, ls='--', label='Validation IoU')
+    ax.plot(d.epoch, d.iou, color=C_TRAIN, lw=1.8, label='Train IoU')
+    ax.plot(d.epoch, d.val_iou, color=C_BASE, lw=1.8, label='Validation IoU')
 
     pk = int(d.val_iou.idxmax())
-    ax.axvline(pk, color='black', lw=0.9, ls=':', alpha=0.7)
+    # shade everything after the peak: this is the wasted portion of training
+    ax.axvspan(pk, len(d) - 1, color=C_PAPER, alpha=0.06, zorder=0)
+    ax.axvline(pk, color=C_BASE, lw=1.0, ls=':', alpha=0.8)
     ax.annotate(f'validation peaks\nat epoch {pk}', xy=(pk, d.val_iou.max()),
-                xytext=(pk + 28, d.val_iou.max() - 0.13), fontsize=10,
-                arrowprops=dict(arrowstyle='->', color='black', lw=0.9))
+                xytext=(pk - 100, d.val_iou.max() + 0.12), fontsize=10, color=C_BASE,
+                arrowprops=dict(arrowstyle='->', color=C_BASE, lw=1.0))
+    # sits in the empty band between the two curves, clear of the legend
+    ax.text((pk + len(d)) / 2, 0.70, 'validation flat — the model is\nmemorising the training set',
+            fontsize=9.5, color=C_PAPER, ha='center', va='center', style='italic')
 
     last = len(d) - 1
     ax.annotate('', xy=(last, d.iou.iloc[-1]), xytext=(last, d.val_iou.iloc[-1]),
-                arrowprops=dict(arrowstyle='<->', color='black', lw=1.3))
+                arrowprops=dict(arrowstyle='<->', color=C_PAPER, lw=1.6))
     ax.text(last - 6, (d.iou.iloc[-1] + d.val_iou.iloc[-1]) / 2,
             f'gap\n+{d.iou.iloc[-1] - d.val_iou.iloc[-1]:.2f}',
-            fontsize=10, ha='right', va='center')
+            fontsize=10.5, ha='right', va='center', color=C_PAPER, fontweight='bold')
 
     ax.set_xlabel('Epoch')
     ax.set_ylabel('IoU')
@@ -72,19 +89,30 @@ def fig2_reproduction():
     names = [r[0] for r in runs]
     vals = [r[1] for r in runs]
 
+    # purple = configuration variants, blue = the three-seed protocol the paper uses
+    cols = [C_ALT, C_ALT, C_ALT, C_BASE, C_BASE, C_BASE]
+
     fig, ax = plt.subplots(figsize=(8, 4.5))
-    ax.bar(range(len(vals)), vals, color='white', edgecolor='black', lw=1.3, width=0.62)
+    ax.bar(range(len(vals)), vals, color=cols, edgecolor='black', lw=0.9, width=0.62)
     for i, v in enumerate(vals):
         ax.text(i, v + 0.008, f'{v:.3f}', ha='center', fontsize=9.5)
 
-    ax.axhline(PAPER_IOU, color='black', lw=1.6, ls='--')
-    ax.text(len(vals) - 0.4, PAPER_IOU + 0.009,
-            f'paper: {PAPER_IOU:.4f}', fontsize=10, ha='right', style='italic')
+    # band spanning every run we measured -- shows they all sit far below the target
+    ax.axhspan(min(vals), max(vals), color=C_BASE, alpha=0.10, zorder=0)
+    ax.text(-0.62, (min(vals) + max(vals)) / 2 - 0.075, 'every run\n0.569 – 0.602',
+            fontsize=9, color=C_BASE, va='center', ha='center', style='italic')
 
+    ax.axhline(PAPER_IOU, color=C_PAPER, lw=1.8, ls='--')
+    ax.text(-0.62, PAPER_IOU + 0.014, f'paper: {PAPER_IOU:.4f}',
+            fontsize=10.5, ha='left', style='italic', color=C_PAPER, fontweight='bold')
+
+    # gap arrow in the clear lane to the right of the last bar
     mean = np.mean([0.6016, 0.5692, 0.6085])
-    ax.annotate('', xy=(4.5, PAPER_IOU), xytext=(4.5, mean),
-                arrowprops=dict(arrowstyle='<->', color='black', lw=1.3))
-    ax.text(4.62, (PAPER_IOU + mean) / 2, f'gap\n{PAPER_IOU - mean:.3f}', fontsize=10, va='center')
+    ax.annotate('', xy=(5.62, PAPER_IOU), xytext=(5.62, mean),
+                arrowprops=dict(arrowstyle='<->', color=C_PAPER, lw=1.6))
+    ax.text(5.72, (PAPER_IOU + mean) / 2, f'gap\n{PAPER_IOU - mean:.3f}',
+            fontsize=10, va='center', ha='left', color=C_PAPER, fontweight='bold')
+    ax.set_xlim(-1.05, 6.35)
 
     ax.set_xticks(range(len(names)))
     ax.set_xticklabels(names, fontsize=9)
@@ -102,15 +130,15 @@ def fig3_augmentation():
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.3))
 
     b, a = log('busi_split43'), log('busi_split43_aug')
-    ax1.plot(b.epoch, b.val_iou, color='gray', lw=1.3, ls='--', label='Paper augmentation')
-    ax1.plot(a.epoch, a.val_iou, color='black', lw=1.5, label='Strong augmentation')
-    ax1.axhline(PAPER_IOU, color='black', lw=1.1, ls=':', alpha=0.65)
-    ax1.text(8, PAPER_IOU + 0.014, 'paper', fontsize=9, style='italic')
+    ax1.plot(b.epoch, b.val_iou, color=C_BASE, lw=1.5, label='Paper augmentation')
+    ax1.plot(a.epoch, a.val_iou, color=C_AUG, lw=1.7, label='Strong augmentation')
+    ax1.axhline(PAPER_IOU, color=C_PAPER, lw=1.3, ls=':', alpha=0.85)
+    ax1.text(8, PAPER_IOU + 0.014, 'paper', fontsize=9, style='italic', color=C_PAPER)
     pk = int(a.val_iou.idxmax())
-    ax1.plot(pk, a.val_iou.max(), 'o', color='black', ms=6)
+    ax1.plot(pk, a.val_iou.max(), 'o', color=C_AUG, ms=7, zorder=4)
     ax1.annotate(f'peak @ep{pk}\n(baseline peaked ~ep100)',
-                 xy=(pk, a.val_iou.max()), xytext=(140, 0.22), fontsize=9.5,
-                 arrowprops=dict(arrowstyle='->', color='black', lw=0.9))
+                 xy=(pk, a.val_iou.max()), xytext=(140, 0.22), fontsize=9.5, color=C_AUG,
+                 arrowprops=dict(arrowstyle='->', color=C_AUG, lw=1.0))
     ax1.set_xlabel('Epoch'); ax1.set_ylabel('Validation IoU')
     ax1.set_title('Augmentation keeps improving past ep100', fontsize=11.5)
     ax1.legend(frameon=False, loc='lower right', fontsize=9.5)
@@ -120,13 +148,17 @@ def fig3_augmentation():
     base = [0.6016, 0.5692, 0.6085]
     aug = [0.6215, 0.6306, 0.6464]
     x = np.arange(3); w = 0.34
-    ax2.bar(x - w/2, base, w, color='white', edgecolor='black', lw=1.3, label='Paper aug')
-    ax2.bar(x + w/2, aug, w, color='black', edgecolor='black', lw=1.3, label='Strong aug')
+    ax2.bar(x - w/2, base, w, color=C_BASE, edgecolor='black', lw=0.9, label='Paper aug')
+    ax2.bar(x + w/2, aug, w, color=C_AUG, edgecolor='black', lw=0.9, label='Strong aug')
     for i in range(3):
         ax2.text(x[i] - w/2, base[i] + 0.010, f'{base[i]:.3f}', ha='center', fontsize=8.5)
         ax2.text(x[i] + w/2, aug[i] + 0.010, f'{aug[i]:.3f}', ha='center', fontsize=8.5)
-    ax2.axhline(PAPER_IOU, color='black', lw=1.1, ls=':', alpha=0.65)
-    ax2.text(-0.45, PAPER_IOU + 0.014, 'paper', fontsize=9, ha='left', style='italic')
+        # per-split delta in text -- an arrow between bars this close reads as noise
+        ax2.text(x[i], max(base[i], aug[i]) + 0.055, f'+{aug[i] - base[i]:.3f}',
+                 ha='center', fontsize=9, color=C_AUG, fontweight='bold')
+    ax2.axhline(PAPER_IOU, color=C_PAPER, lw=1.3, ls=':', alpha=0.85)
+    ax2.text(-0.45, PAPER_IOU + 0.014, 'paper', fontsize=9, ha='left',
+             style='italic', color=C_PAPER)
     ax2.set_xticks(x); ax2.set_xticklabels([f'seed {s}' for s in seeds])
     ax2.set_ylabel('Best IoU')
     ax2.set_ylim(0, 0.92)          # headroom so labels clear the paper line
@@ -174,11 +206,30 @@ def fig4_qualitative():
     scored.sort(reverse=True)
     picks = [scored[0], scored[len(scored) // 2], scored[-1]]
 
-    fig, axes = plt.subplots(3, 3, figsize=(7.5, 7.8))
+    from matplotlib.patches import Patch
+
+    def overlay(img, gt, pr):
+        """Colour-code agreement per pixel on top of the scan.
+
+        green  = correctly found tumour (true positive)
+        red    = missed tumour (false negative) -- the dangerous error
+        yellow = false alarm (false positive)
+        """
+        o = img.astype(float).copy()
+        tint = {(True, True): (60, 220, 60), (True, False): (235, 45, 45),
+                (False, True): (250, 210, 40)}
+        for (in_gt, in_pr), rgb in tint.items():
+            m = (gt == in_gt) & (pr == in_pr)
+            if in_gt or in_pr:                       # skip true-negative background
+                o[m] = 0.45 * o[m] + 0.55 * np.array(rgb)
+        return o.astype('uint8')
+
+    fig, axes = plt.subplots(3, 3, figsize=(7.9, 8.2))
     for r, (dice, iid, img, gt, pr) in enumerate(picks):
-        for c, (im, ttl, cm) in enumerate([(img, 'Ultrasound', None),
-                                           (gt, 'Ground truth', 'gray'),
-                                           (pr, 'Prediction', 'gray')]):
+        panels = [(img, 'Ultrasound', None),
+                  (gt, 'Ground truth', 'gray'),
+                  (overlay(img, gt, pr), 'Prediction vs truth', None)]
+        for c, (im, ttl, cm) in enumerate(panels):
             ax = axes[r, c]
             ax.imshow(im, cmap=cm)
             ax.set_xticks([]); ax.set_yticks([])
@@ -186,9 +237,16 @@ def fig4_qualitative():
                 s.set_visible(True); s.set_color('black')
             if r == 0:
                 ax.set_title(ttl, fontsize=11)
-        axes[r, 0].set_ylabel(f'Dice {dice:.2f}', fontsize=10)
-    fig.suptitle('Best, median and worst cases (held-out split)', fontsize=12, y=0.98)
-    fig.tight_layout()
+        col = C_FTL if dice > 0.8 else (C_AUG if dice > 0.3 else C_PAPER)
+        axes[r, 0].set_ylabel(f'Dice {dice:.2f}', fontsize=10.5,
+                              color=col, fontweight='bold')
+    fig.suptitle('Best, median and worst cases (held-out split)', fontsize=12, y=0.985)
+    fig.legend(handles=[Patch(facecolor='#3cdc3c', edgecolor='black', label='found (TP)'),
+                        Patch(facecolor='#eb2d2d', edgecolor='black', label='missed (FN)'),
+                        Patch(facecolor='#fad228', edgecolor='black', label='false alarm (FP)')],
+               loc='lower center', ncol=3, frameon=False, fontsize=10,
+               bbox_to_anchor=(0.5, -0.004))
+    fig.tight_layout(rect=(0, 0.035, 1, 1))
     fig.savefig(f'{OUT}/fig4_qualitative.png')
     plt.close(fig)
 
@@ -204,16 +262,22 @@ def fig6_cumulative():
                                    gridspec_kw={'width_ratios': [1.35, 1]})
 
     x = np.arange(3); w = 0.26
-    ax1.bar(x - w, base, w, color='white', edgecolor='black', lw=1.3, label='Paper recipe')
-    ax1.bar(x, aug, w, color='0.65', edgecolor='black', lw=1.3, label='+ strong augmentation')
-    ax1.bar(x + w, ftl, w, color='black', edgecolor='black', lw=1.3, label='+ Focal Tversky')
+    ax1.bar(x - w, base, w, color=C_BASE, edgecolor='black', lw=0.9, label='Paper recipe')
+    ax1.bar(x, aug, w, color=C_AUG, edgecolor='black', lw=0.9, label='+ strong augmentation')
+    ax1.bar(x + w, ftl, w, color=C_FTL, edgecolor='black', lw=0.9, label='+ Focal Tversky')
+    # value labels on a common line above the paper marker, so none collide with it
+    lbl_y = PAPER_IOU + 0.022
     for i in range(3):
         for off, v in [(-w, base[i]), (0, aug[i]), (w, ftl[i])]:
-            ax1.text(x[i] + off, v + 0.008, f'{v:.3f}', ha='center', fontsize=7.8)
-    ax1.axhline(PAPER_IOU, color='black', lw=1.1, ls=':', alpha=0.7)
-    ax1.text(-0.42, PAPER_IOU + 0.013, 'paper 0.6695', fontsize=9, style='italic')
+            ax1.vlines(x[i] + off, v, lbl_y - 0.006, color='0.7', lw=0.7, zorder=1)
+            ax1.text(x[i] + off, lbl_y, f'{v:.3f}', ha='center', fontsize=7.8,
+                     rotation=90, va='bottom')
+    ax1.axhline(PAPER_IOU, color=C_PAPER, lw=1.3, ls=':', alpha=0.85)
+    # label the line on the left, below it, where no bar reaches
+    ax1.text(-0.42, PAPER_IOU - 0.038, 'paper 0.6695', fontsize=9,
+             style='italic', color=C_PAPER)
     ax1.set_xticks(x); ax1.set_xticklabels([f'seed {s}' for s in seeds])
-    ax1.set_ylabel('Best IoU'); ax1.set_ylim(0, 0.93)
+    ax1.set_ylabel('Best IoU'); ax1.set_ylim(0, 1.02)   # room for rotated labels
     ax1.set_title('Per split — every seed improves at each stage', fontsize=11.5)
     ax1.legend(frameon=False, fontsize=9, loc='upper center', ncol=3,
                bbox_to_anchor=(0.5, 1.005))
@@ -221,21 +285,25 @@ def fig6_cumulative():
     means = [np.mean(base), np.mean(aug), np.mean(ftl)]
     errs = [np.std(base, ddof=1), np.std(aug, ddof=1), np.std(ftl, ddof=1)]
     labels = ['Paper\nrecipe', '+ strong\naug', '+ Focal\nTversky']
-    ax2.errorbar(range(3), means, yerr=errs, color='black', lw=1.8, marker='o',
-                 ms=8, capsize=6, zorder=3)
+    ax2.errorbar(range(3), means, yerr=errs, color='0.35', lw=1.8, marker='none',
+                 capsize=6, zorder=3)
+    # colour each point to match its condition in the left panel
+    for i, (m, col) in enumerate(zip(means, [C_BASE, C_AUG, C_FTL])):
+        ax2.plot(i, m, 'o', color=col, ms=11, mec='black', mew=1.0, zorder=4)
     for i, (m, e) in enumerate(zip(means, errs)):
         # last point sits near the paper line -- put its label below instead
         below = (i == len(means) - 1)
         ax2.text(i, m - e - 0.016 if below else m + e + 0.011, f'{m:.4f}',
                  ha='center', va='top' if below else 'bottom',
                  fontsize=10, fontweight='bold')
-    ax2.axhline(PAPER_IOU, color='black', lw=1.1, ls=':', alpha=0.7)
-    ax2.text(-0.35, PAPER_IOU + 0.002, 'paper', fontsize=9, ha='left', style='italic')
+    ax2.axhline(PAPER_IOU, color=C_PAPER, lw=1.3, ls=':', alpha=0.85)
+    ax2.text(-0.35, PAPER_IOU + 0.002, 'paper', fontsize=9, ha='left',
+             style='italic', color=C_PAPER)
     ax2.set_ylim(0.560, 0.685)
     ax2.annotate('', xy=(2.2, means[0]), xytext=(2.2, means[2]),
-                 arrowprops=dict(arrowstyle='<->', color='black', lw=1.4))
+                 arrowprops=dict(arrowstyle='<->', color=C_FTL, lw=1.6))
     ax2.text(2.28, (means[0] + means[2]) / 2, f'+{means[2]-means[0]:.3f}',
-             fontsize=10, va='center', fontweight='bold')
+             fontsize=10, va='center', fontweight='bold', color=C_FTL)
     ax2.set_xticks(range(3)); ax2.set_xticklabels(labels, fontsize=9.5)
     ax2.set_xlim(-0.45, 2.65)
     ax2.set_ylabel('Mean IoU over 3 splits')
@@ -252,18 +320,24 @@ def fig7_precision_recall():
     bce = [0.7882, 0.7928]
     ftl = [0.8536, 0.7510]
     x = np.arange(2); w = 0.32
-    ax.bar(x - w/2, bce, w, color='white', edgecolor='black', lw=1.4, label='BCE + Dice')
-    ax.bar(x + w/2, ftl, w, color='black', edgecolor='black', lw=1.4, label='BCE + Focal Tversky')
+    ax.bar(x - w/2, bce, w, color=C_AUG, edgecolor='black', lw=0.9, label='BCE + Dice')
+    ax.bar(x + w/2, ftl, w, color=C_FTL, edgecolor='black', lw=0.9,
+           label='BCE + Focal Tversky')
     for i in range(2):
         ax.text(x[i] - w/2, bce[i] + 0.012, f'{bce[i]:.3f}', ha='center', fontsize=10)
         ax.text(x[i] + w/2, ftl[i] + 0.012, f'{ftl[i]:.3f}', ha='center', fontsize=10)
-    ax.annotate(f'+{ftl[0]-bce[0]:.3f}', xy=(0.42, 0.90), fontsize=11, fontweight='bold')
-    ax.annotate(f'{ftl[1]-bce[1]:.3f}', xy=(1.42, 0.90), fontsize=11, fontweight='bold')
+    # green where we gained, red where we paid -- the trade is the whole story
+    ax.text(0, 0.945, f'+{ftl[0]-bce[0]:.3f}', fontsize=13, ha='center',
+            fontweight='bold', color=C_FTL)
+    ax.text(1, 0.945, f'{ftl[1]-bce[1]:.3f}', fontsize=13, ha='center',
+            fontweight='bold', color=C_PAPER)
     ax.set_xticks(x); ax.set_xticklabels(metrics, fontsize=10.5)
-    ax.set_ylabel('Score'); ax.set_ylim(0, 1.0)
+    ax.set_ylabel('Score'); ax.set_ylim(0, 1.10)
     ax.set_title('Focal Tversky trades precision for recall — by design',
                  fontsize=12, pad=12)
-    ax.legend(frameon=False, fontsize=10, loc='lower right')
+    # legend above the bars; the plot area below is fully occupied
+    ax.legend(frameon=False, fontsize=10, loc='upper center', ncol=2,
+              bbox_to_anchor=(0.5, 1.005))
     fig.tight_layout()
     fig.savefig(f'{OUT}/fig7_precision_recall.png')
     plt.close(fig)
@@ -272,13 +346,18 @@ def fig7_precision_recall():
 def fig5_efficiency():
     """Params vs CPU latency — the claim that DID reproduce."""
     fig, ax = plt.subplots(figsize=(7.5, 4.5))
-    pts = [('TransUNet', 105.32, 246, 'gray'), ('UNeXt (paper)', 1.47, 25, 'gray'),
-           ('UNeXt (ours)', 1.47, 12.5, 'black')]
+    pts = [('TransUNet', 105.32, 246, C_PAPER), ('UNeXt (paper)', 1.47, 25, C_BASE),
+           ('UNeXt (ours)', 1.47, 12.5, C_FTL)]
+    # arrow across the two orders of magnitude UNeXt buys you
+    ax.annotate('', xy=(3.6, 47), xytext=(80, 230),
+                arrowprops=dict(arrowstyle='->', color='0.55', lw=1.6, ls='--'))
+    ax.text(15, 115, '72× fewer parameters\n10× faster', fontsize=10,
+            color='0.35', ha='center', style='italic')
     for name, p, ms, col in pts:
-        ax.scatter(p, ms, s=130, color='white' if col == 'gray' else 'black',
-                   edgecolor='black', lw=1.6, zorder=3)
+        ax.scatter(p, ms, s=170, color=col, edgecolor='black', lw=1.2, zorder=3)
         ax.annotate(f'{name}\n{p:.2f}M, {ms:.0f}ms', (p, ms),
-                    textcoords='offset points', xytext=(12, 6), fontsize=9.5)
+                    textcoords='offset points', xytext=(12, 6),
+                    fontsize=9.5, color=col, fontweight='bold')
     ax.set_xscale('log'); ax.set_yscale('log')
     ax.set_xlabel('Parameters (millions, log scale)')
     ax.set_ylabel('CPU inference (ms, log scale)')

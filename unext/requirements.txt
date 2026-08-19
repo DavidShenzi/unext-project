@@ -1,6 +1,7 @@
-# torch is intentionally NOT pinned here - you already have 2.11.0+cu128 installed,
-# which is the build that supports the RTX 5060 (Blackwell). Installing torch from
-# this file could downgrade you to a CPU-only or incompatible wheel.
+# PyTorch is intentionally NOT pinned here. Install the build that matches your
+# CUDA version first (see https://pytorch.org/get-started/locally/); installing
+# torch from this file can pull a CPU-only or incompatible wheel over it.
+# Developed against torch 2.11.0+cu128.
 #
 #   pip install -r requirements.txt
 
@@ -13,3 +14,6 @@ pyyaml>=6.0
 tqdm>=4.66.0
 matplotlib>=3.8.0
 ptflops>=0.7.3
+
+# only needed to rebuild the slide deck (make_pptx.py)
+python-pptx>=0.6.23

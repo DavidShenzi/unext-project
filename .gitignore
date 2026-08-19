@@ -49,3 +49,24 @@ desktop.ini
 
 # paper PDF - linked in README instead of redistributed
 2203.04967v1.pdf
+
+# ---------------------------------------------------------------- course material
+# The assignment brief is the lecturers' document, not our work product.
+Deep Learning*.pdf
+
+# ---------------------------------------------------------------- assistant / tooling notes
+# Working notes from editors and coding assistants; not part of the submission.
+.claude/
+CLAUDE.md
+.aider*
+.cursor/
+.continue/
+
+# ---------------------------------------------------------------- scratch
+scratchpad/
+tmp/
+*.tmp
+*.bak
+*.orig
+*.new.pptx
+nohup.out

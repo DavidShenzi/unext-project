@@ -53,11 +53,9 @@ def build_model(config, device):
         # Checkpoints are not committed (see .gitignore) -- only the training
         # logs are. Say so plainly instead of raising a bare FileNotFoundError.
         raise SystemExit(
-            f"no checkpoint at {ckpt}
-"
-            f"Model weights are not distributed with this repository; train the "
-            f"run first, e.g.
-"
+            f"no checkpoint at {ckpt}\n"
+            "Model weights are not distributed with this repository; "
+            "train the run first, e.g.\n"
             f"  python train.py --dataset busi --arch {config['arch']} "
             f"--name {config['name']}")
     state = torch.load(ckpt, map_location='cpu')

@@ -48,8 +48,19 @@ def build_model(config, device):
                                            config['input_channels'],
                                            config['deep_supervision'],
                                            **model_kwargs)
-    state = torch.load(os.path.join('models', config['name'], 'model.pth'),
-                       map_location='cpu')
+    ckpt = os.path.join('models', config['name'], 'model.pth')
+    if not os.path.exists(ckpt):
+        # Checkpoints are not committed (see .gitignore) -- only the training
+        # logs are. Say so plainly instead of raising a bare FileNotFoundError.
+        raise SystemExit(
+            f"no checkpoint at {ckpt}
+"
+            f"Model weights are not distributed with this repository; train the "
+            f"run first, e.g.
+"
+            f"  python train.py --dataset busi --arch {config['arch']} "
+            f"--name {config['name']}")
+    state = torch.load(ckpt, map_location='cpu')
     model.load_state_dict(state)
     return model.to(device).eval()
 

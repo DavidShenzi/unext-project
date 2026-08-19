@@ -4,8 +4,14 @@ Outputs to figures/:
   fig1_overfitting.png   train vs val IoU -- the diagnosis
   fig2_reproduction.png  our runs vs the paper's reported number
   fig3_augmentation.png  baseline vs augmented curves + per-split bars
-  fig4_qualitative.png   image / ground truth / prediction examples
+  fig4_qualitative.png   prediction vs ground truth overlaid on the scan
   fig5_efficiency.png    params vs CPU latency, UNeXt vs TransUNet
+  fig6_cumulative.png    both training-recipe changes stacked, per split
+  fig7_precision_recall.png  what Focal Tversky traded
+
+Every figure except fig4 builds from the committed models/*/log.csv alone.
+fig4 additionally needs the BUSI dataset and a trained checkpoint (neither is in
+the repository); it is skipped with a message if they are absent.
 """
 
 import os
@@ -181,9 +187,19 @@ def fig4_qualitative():
     from sklearn.model_selection import train_test_split
     from glob import glob
 
+    # This is the one figure that needs the dataset and a trained checkpoint,
+    # neither of which is in the repository (see .gitignore). Skip it cleanly so
+    # the remaining figures still build on a fresh clone.
+    ckpt = 'models/busi_split43_aug/model.pth'
+    if not os.path.exists(ckpt) or not os.path.isdir('inputs/busi/images'):
+        print('    skipped: needs the BUSI dataset and a trained checkpoint'
+              f' ({ckpt}); the committed figures/fig4_qualitative.png was built'
+              ' from a completed run')
+        return
+
     dev = 'cuda' if torch.cuda.is_available() else 'cpu'
     m = archs.UNext(1, 3, False)
-    m.load_state_dict(torch.load('models/busi_split43_aug/model.pth', map_location='cpu'))
+    m.load_state_dict(torch.load(ckpt, map_location='cpu'))
     m = m.to(dev).eval()
 
     ids = sorted(os.path.splitext(os.path.basename(p))[0]

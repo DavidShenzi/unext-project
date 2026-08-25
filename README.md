@@ -5,9 +5,12 @@ Final project, Deep Learning (83882).
 **Paper:** [UNeXt: MLP-based Rapid Medical Image Segmentation Network](https://arxiv.org/abs/2203.04967)
 — Valanarasu & Patel, Johns Hopkins University, MICCAI 2022
 **Original code:** https://github.com/jeya-maria-jose/UNeXt-pytorch
+**This repository:** https://github.com/DavidShenzi/unext-project
 
-**Group:** `<NAME 1>` (`<ID>`) · `<NAME 2>` (`<ID>`) · `<NAME 3>` (`<ID>`)
+**Group:** Ze'ev Gastevert · Ido Leibowitz · David Sheinenzon
 **Presentation video:** `<UNLISTED YOUTUBE LINK>`
+
+*(ID numbers are on the presentation submitted to the course, not in this public repository.)*
 
 ---
 

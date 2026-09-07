@@ -45,6 +45,8 @@ C_FTL = '#2ca02c'      # + Focal Tversky (best)
 C_PAPER = '#d62728'    # the paper's reported target
 C_TRAIN = '#7f7f7f'    # training curves (context, not a condition)
 C_ALT = '#9467bd'      # other variants (SE, 512px, ...)
+C_WAVE = '#17becf'     # + wavelet token mixer
+C_BND = '#8c564b'      # + boundary-gated skip
 
 
 def log(name):
@@ -384,10 +386,108 @@ def fig5_efficiency():
     plt.close(fig)
 
 
+def fig8_modifications():
+    """Every architectural modification we tried, against what each one cost.
+
+    The point of the figure is that the two axes disagree: the modification that helps
+    most is not the one that costs most. Plotting delta-IoU against delta-GFLOPs puts
+    "free" improvements on the left and expensive ones on the right, so a reader can see
+    at a glance which changes were worth their compute.
+    """
+    import csv as _csv
+
+    def best(run, min_epochs=None):
+        """Best val IoU, but only for runs that actually finished.
+
+        A run still in progress would otherwise be plotted against a completed baseline
+        and read as a large regression, when it has simply not trained yet. `min_epochs`
+        makes that exclusion explicit rather than leaving it to whoever reads the chart.
+        """
+        p = f'models/{run}/log.csv'
+        if not os.path.exists(p):
+            return None
+        v = [float(r['val_iou']) for r in _csv.DictReader(open(p)) if r.get('val_iou')]
+        if not v or (min_epochs and len(v) < min_epochs):
+            return None
+        return max(v) if v else None
+
+    def paired(mod_pat, base_pat, min_epochs=None):
+        """Mean over splits of (modified - baseline), pairing within each split."""
+        ds = []
+        for s in (41, 42, 43):
+            m = best(mod_pat.format(s=s), min_epochs)
+            b = best(base_pat.format(s=s))
+            if m is not None and b is not None:
+                ds.append(m - b)
+        return (sum(ds) / len(ds), len(ds)) if ds else (None, 0)
+
+    # (label, mean delta IoU, delta GFLOPs, colour). SE and Skip-Fusion are the two
+    # modifications from the first round, measured on split 43 only.
+    se = best('busi_split43_SEft')
+    skip = best('busi_split43_SkipFt')
+    b43 = best('busi_split43_aug')
+    rows = []
+    if se is not None and b43 is not None:
+        rows.append(('SE attention', se - b43, 0.000, C_ALT, 1))
+    if skip is not None and b43 is not None:
+        rows.append(('Skip-Fusion', skip - b43, 0.641 - 0.577, C_BASE, 1))
+
+    ftl, n_ftl = paired('busi_split{s}_ftl', 'busi_split{s}_aug')
+    if ftl is not None:
+        rows.append(('Focal Tversky', ftl, 0.000, C_FTL, n_ftl))
+    wave, n_w = paired('busi_split{s}_wave', 'busi_split{s}_aug', min_epochs=400)
+    if wave is not None:
+        rows.append(('Wavelet mixer', wave, 0.525 - 0.577, C_WAVE, n_w))
+    bnd, n_b = paired('busi_split{s}_bnd', 'busi_split{s}_aug', min_epochs=100)
+    if bnd is not None:
+        rows.append(('Boundary gate', bnd, 0.672 - 0.577, C_BND, n_b))
+
+    if not rows:
+        print('    skipped: no modification runs found yet')
+        return
+
+    fig, ax = plt.subplots(figsize=(9, 5.5))
+    ax.axhline(0, color='black', lw=1, zorder=1)
+    ax.axvline(0, color='gray', lw=0.8, ls=':', zorder=1)
+
+    for label, d_iou, d_flops, colour, n in rows:
+        ax.scatter(d_flops, d_iou, s=190, color=colour, zorder=3,
+                   edgecolor='black', linewidth=0.8)
+        # Offset labels away from the axes so they never sit on the zero lines.
+        # Offsets are in POINTS (textcoords='offset points'); using data units here
+        # silently puts the text on top of its own marker.
+        va = 'bottom' if d_iou >= 0 else 'top'
+        dy = 14 if d_iou >= 0 else -14
+        ax.annotate(f'{label}\n{d_iou:+.4f} ({n} split{"s" if n > 1 else ""})',
+                    (d_flops, d_iou), xytext=(0, dy), textcoords='offset points',
+                    ha='center', va=va, fontsize=9.5, color=colour, weight='bold',
+                    annotation_clip=False)
+
+    ax.set_xlabel('change in GFLOPs vs baseline  (left = cheaper)')
+    ax.set_ylabel('change in validation IoU')
+    ax.set_title('What each modification bought, and what it cost', fontsize=13)
+
+    # Pad the limits first so annotations have room, then shade. The claim is "no more
+    # expensive and better", so the region includes x == 0 (free) as well as x < 0.
+    xl, yl = ax.get_xlim(), ax.get_ylim()
+    px, py = (xl[1] - xl[0]) * 0.18, (yl[1] - yl[0]) * 0.18
+    ax.set_xlim(xl[0] - px, xl[1] + px)
+    ax.set_ylim(yl[0] - py, yl[1] + py)
+    xl, yl = ax.get_xlim(), ax.get_ylim()
+    ax.add_patch(plt.Rectangle((xl[0], 0), -xl[0], yl[1], color='green', alpha=0.055,
+                               zorder=0, linewidth=0))
+    ax.text(xl[0] * 0.5, yl[1] * 0.95, 'no dearer, and better',
+            ha='center', va='top', fontsize=9, style='italic', color='green', alpha=0.85)
+
+    fig.tight_layout()
+    fig.savefig(f'{OUT}/fig8_modifications.png')
+    plt.close(fig)
+
+
 if __name__ == '__main__':
     for fn in (fig1_overfitting, fig2_reproduction, fig3_augmentation,
                fig4_qualitative, fig5_efficiency, fig6_cumulative,
-               fig7_precision_recall):
+               fig7_precision_recall, fig8_modifications):
         fn()
         print(f'  {fn.__name__} ok')
     print(f'\nwrote {len(os.listdir(OUT))} figures to {OUT}/')

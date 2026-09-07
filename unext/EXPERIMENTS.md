@@ -260,8 +260,10 @@ that a queue cut short still yields a coherent result -- all three splits of one
 2. `busi_split{41,42,43}_bnd` -- 100 ep grafted (~1.0 h each)
 3. the same six at seeds 101 and 202 (split held fixed, init varied)
 
-Measured throughput is ~31 s/epoch, so stages 1-2 are ~13.4 h and the full 18-job queue
-is ~40 h. Stage 3 exists because three splits at p~0.08 cannot resolve a +0.005 effect;
+Measured throughput settled at ~17 s/epoch once the GPU left its initial throttled
+window (the first 100 epochs suggested ~31 s/epoch, which overestimated the total by
+almost 2x). A 400-epoch wavelet run takes ~1.9 h, so stages 1-2 are ~7.3 h and the full
+18-job queue is ~22 h. Stage 3 exists because three splits at p~0.08 cannot resolve a +0.005 effect;
 whether it completes depends on available time.
 
 Note the ~31 s/epoch is data-loader bound, not GPU bound (`num_workers=0`, a deliberate

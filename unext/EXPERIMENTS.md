@@ -269,3 +269,47 @@ whether it completes depends on available time.
 Note the ~31 s/epoch is data-loader bound, not GPU bound (`num_workers=0`, a deliberate
 choice for Windows -- see the note in `train.py`). Raw GPU step time would predict roughly
 half that.
+
+### 7.5 Wavelet mixer: results after two splits
+
+| split | baseline (aug) | wavelet | delta |
+|---|---|---|---|
+| 41 | 0.6215 | 0.6246 | +0.0031 |
+| 42 | 0.6306 | 0.6226 | -0.0080 |
+
+Mean -0.0025, p = 0.73 (n = 2). On aggregate IoU there is no detectable effect either way.
+
+The boundary metrics are more informative, and they point the same direction on both
+splits -- against the hypothesis:
+
+| split | boundary F1 | HD95 (px) | IoU per image |
+|---|---|---|---|
+| 41 | 0.4671 -> 0.4578 (-0.009) | 33.39 -> 34.92 (+1.5 worse) | 0.6790 -> 0.6629 |
+| 42 | 0.4946 -> 0.4564 (-0.038) | 33.12 -> 36.83 (+3.7 worse) | 0.6706 -> 0.6563 |
+
+**Note the two IoU conventions disagree in sign on split 41.** The checkpoint is selected
+on *aggregate* val IoU, where large lesions dominate and the wavelet run wins (+0.0031);
+per image it loses (-0.016). This is exactly the discrepancy flagged in the metric note at
+the end of section 6, showing up in practice.
+
+Broken down by lesion area (terciles of the ground-truth mask):
+
+| split | small | medium | large |
+|---|---|---|---|
+| 41 | **-0.0356** | -0.0124 | -0.0006 |
+| 42 | **-0.0361** | +0.0147 | -0.0213 |
+
+The small-lesion penalty reproduces almost exactly across two independent splits
+(-0.0356, -0.0361) while the medium and large columns disagree in sign, so smallness is
+the robust axis. That is backwards from the design intent: small lesions are where margin
+precision matters most, and they are where this mixer is worst.
+
+**Likely mechanism.** Inspecting the trained weights, the detail convolutions did learn
+(they start at exactly zero and reach mean |w| ~0.012, comparable to the MLP's own
+~0.015), so the path is not dead. But `detail.2` -- the HH diagonal band -- ends up
+roughly *half* the magnitude of the two oriented bands in every block. The network
+systematically down-weighted the diagonal detail. In B-mode ultrasound, HH is dominated
+by speckle rather than anatomy, so this reads as the model learning to suppress a band
+that carries mostly noise -- the risk anticipated in section 7.1 before the runs started.
+
+Split 43 was still training when this was written.

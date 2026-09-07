@@ -179,3 +179,91 @@ aggregate convention, seeding, GFLOPs/latency benchmarks, BUSI/ISIC preprocessin
 **Metric note:** upstream derives Dice as `2·IoU/(IoU+1)`, which equals the *aggregate*
 Dice, not the mean per-image Dice the literature usually reports. Both are logged
 (`val_dice` vs `val_dice_per_image`). State which convention you report.
+
+---
+
+## 7. Two further modifications (queued 2026-09-07)
+
+Two architectures aimed at the same weakness -- UNeXt's handling of blurred, infiltrative
+lesion margins -- but attacking it at different points in the network.
+
+### 7.1 `UNext_Wave` -- wavelet token mixer
+
+Replaces the shifted-MLP token mixer in all four Tok-MLP blocks. A parameter-free Haar
+DWT splits each feature map into four sub-bands; the low band (LL) runs through the
+existing MLP at half resolution, and the three detail bands each get a dilated depthwise
+3x3. The inverse transform recombines them, so the block is a drop-in for `shiftmlp`.
+
+The motivation is that `torch.roll` is frequency-blind: one rigid operator handles both
+the smooth interior of a lesion and its margin, averaging sharp boundary evidence
+together with low-frequency texture. Routing the bands separately lets the margin path
+have its own operator.
+
+Because the MLP then sees a quarter of the tokens, the block is **cheaper** than the one
+it replaces:
+
+| | params | GFLOPs |
+|---|---|---|
+| `UNext` (baseline) | 1,471,921 | 0.577 |
+| `UNext_Wave` | 1,493,041 (+1.4%) | **0.525 (-9%)** |
+
+Trained from scratch (400 ep), since the mixer has no counterpart in a baseline
+checkpoint to graft from.
+
+**Risk to watch:** BUSI is ultrasound, and speckle noise is high-frequency. The HH band
+may carry mostly speckle rather than boundary. A null result here is still informative,
+in the same way the SE result was.
+
+### 7.2 `UNext_Boundary` -- boundary-gated skip
+
+Extends `SkipFusion`. That gate predicts how much encoder detail to admit from the
+*values* of the encoder and decoder features; this one additionally feeds it a fixed
+Laplacian edge response computed from the encoder feature, so it can key on spatial
+gradient directly instead of inferring boundaries from values:
+
+    e   = |laplacian(encoder)|                    # fixed kernel, no parameters
+    g   = sigmoid(conv1x1([decoder, encoder, e]))
+    out = decoder + 2*g * encoder
+
+Keeps `SkipFusion`'s `identity_init` contract, so it grafts onto a trained checkpoint and
+fine-tunes (100 ep from the matching `*_aug` run). Grafting is both ~3x cheaper than
+training from scratch and a cleaner ablation: the comparison against `busi_split43_SkipFt`
+isolates the edge signal, since gate topology and backbone are otherwise identical.
+
+1,602,049 params / 0.672 GFLOPs, against `UNext_SkipFusion`'s 1,558,785 / 0.641.
+
+### 7.3 Pre-flight verification
+
+Checked before committing GPU time, since an unattended queue cannot diagnose itself:
+
+- Haar DWT/IWT reconstruct to max abs error 3e-7, including odd spatial sizes and under
+  AMP float16; 99.98% of a smooth signal's energy lands in LL as theory requires.
+- `UNext_Boundary` with `identity_init` matches the baseline **bit-exactly** (max diff
+  0.000e+00); with random gate init it differs, confirming the gate is live.
+- No dead gradients in either model. The detail convs and gates start at zero but receive
+  nonzero gradient -- i.e. not the failure mode that made SE attention a null result.
+- Graft loads 101 backbone tensors, 12 new, 0 unused; resumes at IoU 0.608, matching the
+  parent checkpoint.
+
+One performance defect was found and fixed here: expanding the DWT filter bank with
+`repeat()` on every call cost 0.134 ms against the transform's own 0.100 ms. Caching it
+per (channels, dtype) took `UNext_Wave` from 1.8x baseline step time to 0.96x.
+
+### 7.4 Queue
+
+`run_queue.py` runs the jobs in priority order, skipping any whose `model.pth` already
+exists (so it is restartable) and continuing past individual failures. Order is chosen so
+that a queue cut short still yields a coherent result -- all three splits of one condition
+-- rather than scattered partial runs:
+
+1. `busi_split{41,42,43}_wave` -- 400 ep from scratch (~3.4 h each)
+2. `busi_split{41,42,43}_bnd` -- 100 ep grafted (~1.0 h each)
+3. the same six at seeds 101 and 202 (split held fixed, init varied)
+
+Measured throughput is ~31 s/epoch, so stages 1-2 are ~13.4 h and the full 18-job queue
+is ~40 h. Stage 3 exists because three splits at p~0.08 cannot resolve a +0.005 effect;
+whether it completes depends on available time.
+
+Note the ~31 s/epoch is data-loader bound, not GPU bound (`num_workers=0`, a deliberate
+choice for Windows -- see the note in `train.py`). Raw GPU step time would predict roughly
+half that.

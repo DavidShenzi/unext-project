@@ -76,3 +76,6 @@ nohup.out
 # public. *_SUBMIT.pptx holds the version WITH IDs and must never be committed;
 # the committed deck carries names only.
 *_SUBMIT.pptx
+
+# queue logs from unattended runs (regenerable; models/ already ignored)
+unext/queue_logs/

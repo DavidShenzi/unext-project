@@ -38,15 +38,37 @@ COMPARISONS = {
 }
 
 
-def best_val_iou(run):
-    """Best validation IoU from a run's own log, or None if absent/unreadable."""
+# Epochs a run must have logged before its number means anything. A job still training
+# would otherwise be compared against a completed baseline and read as a catastrophic
+# regression -- a wavelet run at epoch 20 of 400 scored 0.2703 against a baseline's
+# 0.6464, which is not a result, it is an unfinished run.
+MIN_EPOCHS = {'wave': 400, 'bnd': 100, 'aug': 1, 'ftl': 1}
+
+
+def _min_epochs_for(run):
+    for suffix, n in MIN_EPOCHS.items():
+        if run.endswith(suffix) or f'_{suffix}_s' in run:
+            return n
+    return 1
+
+
+def best_val_iou(run, require_complete=True):
+    """Best validation IoU from a run's own log.
+
+    Returns None when the run is absent, unreadable, or has not yet reached its full
+    epoch schedule -- so a partially-trained job is excluded rather than reported.
+    """
     p = os.path.join(HERE, 'models', run, 'log.csv')
     if not os.path.exists(p):
         return None
     try:
         with open(p, encoding='utf-8') as f:
             v = [float(r['val_iou']) for r in csv.DictReader(f) if r.get('val_iou')]
-        return max(v) if v else None
+        if not v:
+            return None
+        if require_complete and len(v) < _min_epochs_for(run):
+            return None
+        return max(v)
     except Exception:
         return None
 

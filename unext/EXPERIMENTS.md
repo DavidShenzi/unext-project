@@ -452,3 +452,57 @@ is below the resolution of the experiment".
 (251/400), `busi_split42` and `busi_split43` (150/400), `busi_split43_SEft` (31/100).
 These are the runs already flagged in section 5 as lacking `eval.yml`; they are truncated
 in the logs too, and any figure using them should say so.
+
+### 7.10 Independent verification of the analysis
+
+Two audits were run against the raw logs with no access to the conclusions. They confirmed
+most claims and corrected three. The corrections are recorded here because two of them
+were errors that would have been presented.
+
+**Retracted: "IoU and false-positive rate trade off against each other."** Across all 31
+scored runs, best IoU and clean rate correlate at r = -0.559 (p = 0.0011), which was read
+as a general accuracy/hallucination tradeoff. It is not. Controlling for a single binary
+"strong augmentation" indicator:
+
+| | r | p |
+|---|---|---|
+| raw | -0.5585 | 0.0011 |
+| partial, controlling for aug group | **-0.0364** | 0.85 |
+| within strong-aug runs only (n = 25) | **+0.0545** | 0.80 |
+
+There are two clusters -- paper-recipe runs with low IoU and high clean rate, strong-aug
+runs with the reverse -- and the "correlation" is the line joining their centroids. The
+correct statement is about the augmentation change specifically, not about IoU in general.
+
+**Corrected: checkpoint selection is 26 of 32, not 27.** Selecting on min val_loss rather
+than max val_iou loses IoU in 26 runs, ties in 6, and **gains in none** (Wilcoxon
+p = 3.0e-08). The "never gains" half is the stronger claim and is exact.
+
+**Corrected: the overfitting gap figures.** The quoted +0.33-0.36 vs +0.08-0.13 were
+measured at the final epoch, not at the selected checkpoint. At the checkpoint epoch, and
+restricted to runs that completed their schedule, the separation still holds with no
+overlap (paper-aug 0.1969; strong-aug -0.0080 to 0.1182), but an audit using truncated
+runs found an overlap of 0.001. Any version of this claim must state that it excludes
+incomplete runs.
+
+**Strengthened: the wavelet false-positive result.** Adding the `split41` seed-101 pair
+gives four paired comparisons, all positive:
+
+| pair | aug clean | wave clean | delta |
+|---|---|---|---|
+| split41 seed41 | 0.0150 | 0.1579 | +0.1429 |
+| split42 seed41 | 0.0226 | 0.0902 | +0.0677 |
+| split43 seed41 | 0.0451 | 0.1880 | +0.1429 |
+| split41 seed101 | 0.0752 | 0.1579 | +0.0827 |
+
+**Mean +0.1090, t = 5.513, p = 0.0117.** This is the only result in the project that
+strengthens as data is added, and the only one that clears p = 0.05. It is measured on an
+evaluation set no model was trained on, and it is invisible to the metric the study
+otherwise reports: the same comparison on IoU is -0.0014 (p = 0.72) and on Dice -0.0001
+(p = 0.94).
+
+**Open question flagged by the audit.** Every false-positive number uses a fixed 0.5
+threshold. If the wavelet model is simply less confident rather than better behaved, a
+threshold sweep will show its advantage collapsing; if the advantage holds across
+thresholds, it is architectural. That sweep is inference-only and is the highest-value
+outstanding analysis.

@@ -7,9 +7,10 @@ Priority order matters: the queue is ordered so that if it is cut short, what co
 is still a coherent, reportable result (all three splits of one condition) rather than
 a scatter of unrelated partial runs.
 
-  stage 1  UNext_Wave      x3 splits   from scratch, 400 ep   -- the novelty result
-  stage 2  UNext_Boundary  x3 splits   grafted, 100 ep        -- the safety result
-  stage 3  both            x2 extra seeds each                -- statistical power
+  stage 1   UNext_Wave      x3 splits   from scratch, 400 ep  -- the novelty result
+  stage 2   UNext_Boundary  x3 splits   grafted, 100 ep       -- the safety result
+  stage 2b  controls        x3 splits   no-gate continuation + frozen-backbone gate
+  stage 3   both            x2 extra seeds each               -- statistical power
 
 Stage 3 exists because three splits at p~0.08 cannot resolve a +0.005 effect; the extra
 seeds hold the data split fixed and vary only the weight init, which is what the paired
@@ -70,6 +71,23 @@ def build_queue():
         parent = f'models/busi_split{s}_aug/model.pth'
         jobs.append(job(f'busi_split{s}_bnd', 'UNext_Boundary', 100, s, s,
                         init_from=parent, skip_identity_init='True'))
+
+    # ---- stage 2b: the controls that make stage 2 interpretable ---------------------
+    # The _bnd runs above fine-tune the WHOLE backbone for 100 more epochs, and the
+    # parent checkpoints had not converged (split 41's peaked at epoch 391 of 400). So
+    # "+0.0054 vs the parent" confounds the gate with 100 epochs of ordinary training.
+    #
+    #   _cont : identical continuation with NO gate (plain UNext). The difference
+    #           between _bnd and _cont is what the gate actually bought.
+    #   _bndf : gates only, backbone frozen, lr 1e-3 -- the protocol the earlier
+    #           busi_split43_SkipFt run used, so the boundary gate can be compared
+    #           against Skip-Fusion on equal terms rather than across protocols.
+    for s in SPLITS:
+        parent = f'models/busi_split{s}_aug/model.pth'
+        jobs.append(job(f'busi_split{s}_cont', 'UNext', 100, s, s, init_from=parent))
+        jobs.append(job(f'busi_split{s}_bndf', 'UNext_Boundary', 100, s, s,
+                        init_from=parent, skip_identity_init='True',
+                        freeze_except='fuse', lr=1e-3))
 
     # ---- stage 3: extra seeds for statistical power ---------------------------------
     for seed in EXTRA_SEEDS:

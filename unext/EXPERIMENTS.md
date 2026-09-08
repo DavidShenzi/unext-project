@@ -322,3 +322,47 @@ anatomy, so the network appears to have learned to suppress a band carrying most
 -- the risk anticipated in section 7.1 before the runs started. This is an observation
 about learned weights, not a controlled experiment; an ablation that removes the HH branch
 entirely would be the way to test it properly.
+
+### 7.6 Boundary gate: the gate learned the opposite of the hypothesis
+
+Aggregate results after two splits (third still running):
+
+| split | parent (aug) | + boundary gate | delta |
+|---|---|---|---|
+| 41 | 0.6215 | 0.6269 | +0.0054 |
+| 42 | 0.6306 | 0.6314 | +0.0009 |
+
+**These numbers are not yet interpretable.** The runs fine-tune the *whole* backbone for
+100 further epochs (`--freeze_except` was not set), starting from parents that had not
+converged -- split 41's peaked at epoch 391 of 400. Both runs drop about 0.06 below their
+parent at epoch 1 (0.6215 -> 0.5575, 0.6306 -> 0.5723) and then climb back, which is the
+backbone being disturbed and re-converging, not gates learning on a stable base. The
+`_cont` control (identical continuation, no gate) is queued to separate the two.
+
+**What the gate actually learned.** The design assumed the gate would *open* on
+boundaries, admitting encoder detail where the margin is. Probing the learned gates on
+validation data shows the opposite. Mean gate value by edge-magnitude decile of the
+encoder feature (lowest two deciles are exactly zero -- flat background -- so those bins
+are empty):
+
+| split | low edge ....................... high edge |
+|---|---|
+| 41 | 0.521 0.530 0.529 0.526 0.517 0.510 0.499 **0.478** |
+| 42 | 0.502 0.475 0.472 0.468 0.464 0.460 0.455 **0.429** |
+
+Monotone decreasing on both splits, independently. The gate *closes* as edge strength
+rises: it admits less encoder detail at boundaries, not more.
+
+The weight inspection agrees that the edge signal was not privileged. Across all four
+gates on both splits the Laplacian channel's share of gate weight magnitude is 0.335-0.361
+-- essentially exactly the 1/3 that undifferentiated weights over three equal input groups
+would give. The one consistent departure is `fuse1`, the highest-resolution skip, where
+the edge share is slightly elevated (0.361, 0.345); that is the level where boundary
+detail would matter most, but the margin is small.
+
+A plausible reading: at these feature scales a strong Laplacian response marks *speckle
+and texture*, not lesion margin, so suppressing high-gradient encoder pixels is a sensible
+denoising policy for the network to adopt -- and the gate found it. That is a real
+mechanism, but it is not the one the module was designed around, and it means the module's
+name over-claims. Whether the small aggregate gain survives the `_cont` control is a
+separate question from whether the stated mechanism is what produced it.

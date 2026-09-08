@@ -53,6 +53,26 @@ def job(name, arch, epochs, seed, split_seed, **extra):
     return {'name': name, 'arch': arch, 'cmd': cmd}
 
 
+def established_seed_jobs():
+    """More seeds of the conditions that actually appear in the report.
+
+    Once the boundary-gate question is settled, extra runs of *it* buy nothing, but extra
+    seeds of the baseline / strong-aug / Focal Tversky conditions tighten the error bars
+    on the numbers already being reported -- including the headline +0.0133 Focal Tversky
+    gain, currently resting on three splits at p = 0.081.
+
+    Seed 41 is what every existing baseline used, so these add 101 and 202 to give three
+    initialisations per condition per split.
+    """
+    jobs = []
+    for seed in EXTRA_SEEDS:
+        for s_ in SPLITS:
+            jobs.append(job(f'busi_split{s_}_aug_s{seed}', 'UNext', 400, seed, s_))
+            jobs.append(job(f'busi_split{s_}_ftl_s{seed}', 'UNext', 400, seed, s_,
+                            loss='BCEFocalTverskyLoss'))
+    return jobs
+
+
 def build_queue():
     jobs = []
 
@@ -88,6 +108,16 @@ def build_queue():
         jobs.append(job(f'busi_split{s}_bndf', 'UNext_Boundary', 100, s, s,
                         init_from=parent, skip_identity_init='True',
                         freeze_except='fuse', lr=1e-3))
+
+    # ---- stage 3: depends on whether the gate question has been answered ------------
+    # decide_next.py writes queue_plan.txt after each job. If it has concluded the gate
+    # effect sits inside the init-only noise floor, further gate variants cannot change
+    # that, and the time goes to seeds of the reported conditions instead.
+    plan = os.path.join(HERE, 'queue_plan.txt')
+    if os.path.exists(plan):
+        with open(plan, encoding='utf-8') as f:
+            if f.read().strip() == 'seeds':
+                return jobs + established_seed_jobs()
 
     # ---- stage 3: extra seeds, weighted toward the open question ---------------------
     # The wavelet comparison is settled: -0.0014 at p = 0.72 over three splits, with the
@@ -219,13 +249,35 @@ def main():
         return
 
     t_start = time.time()
-    for i, j in enumerate(pending, 1):
+    # Index-driven rather than `for ... in pending`: the loop re-plans and can replace
+    # the tail of the list, which a for-loop's captured iterator would ignore.
+    i = 0
+    while i < len(pending):
+        j = pending[i]
+        i += 1
         stamp = datetime.datetime.now().strftime('%H:%M:%S')
         print(f'[{stamp}] ({i}/{len(pending)}) {j["name"]} ...', flush=True)
         st, note = run(j)
         record([j['name'], j['arch'], st, best_iou(j['name']), note.split(';')[-1].strip(),
                 datetime.datetime.now().isoformat(timespec='seconds'), note])
         print(f'    -> {st}  iou={best_iou(j["name"]) or "n/a"}  {note}', flush=True)
+
+        # Re-ask after every job whether the boundary-gate question is now settled. If it
+        # is, the remaining gate jobs are dropped and seeds of the reported conditions
+        # take their place -- the switch the user asked for, made without them present.
+        try:
+            subprocess.run([sys.executable, 'decide_next.py', '--apply'], cwd=HERE,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           timeout=120)
+            fresh = [x for x in build_queue() if not done(x['name'])]
+            names = {x['name'] for x in fresh}
+            dropped = [x for x in pending[i:] if x['name'] not in names]
+            if dropped:
+                print(f'    replanned: dropping {len(dropped)} superseded job(s)',
+                      flush=True)
+                pending = pending[:i] + fresh
+        except Exception as e:
+            print(f'    (replan skipped: {e})', flush=True)
 
     print(f'\nqueue finished in {(time.time() - t_start) / 3600:.2f} h')
     print(f'status: {STATUS}')

@@ -126,9 +126,12 @@ def build_queue():
     # confounded with 100 epochs of whole-backbone fine-tuning until the controls land --
     # so the remaining GPU time goes there.
     #
-    # Wavelet keeps two seed repeats only, enough to show the null is not an artefact of
-    # one initialisation. Both are on split 41 and 42; split 43's is dropped.
-    for s_ in SPLITS[:2]:
+    # Wavelet needs one seed repeat, and it is already done. busi_split41_wave_s101
+    # scored 0.6172 against seed 41's 0.6246: the same architecture against the same
+    # baseline lands at +0.0031 or -0.0043 depending only on the initialisation, so the
+    # sign of the "effect" is set by the seed. Nothing further is learnable here, and a
+    # second repeat would cost 1.9 h to restate it.
+    for s_ in SPLITS[:1]:
         jobs.append(job(f'busi_split{s_}_wave_s101', 'UNext_Wave', 400, 101, s_))
 
     # Boundary gate: both seeds, all three splits, in both training regimes. The frozen

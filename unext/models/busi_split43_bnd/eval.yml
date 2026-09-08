@@ -1,0 +1,8 @@
+cpu_ms_per_image: 84.67
+dice_from_iou: 0.7778
+dice_per_image: 0.7682
+gflops: 0.672
+gpu_ms_per_image: 5.42
+iou_batch_aggregate: 0.6447
+iou_per_image: 0.6767
+n_params: 1602049

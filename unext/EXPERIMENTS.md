@@ -13,7 +13,7 @@ Paper's reported BUSI numbers: **IoU 0.6695 / F1-Dice 0.7937** (mean of 3 random
 | | baseline (paper aug) | strong aug | Δ |
 |---|---|---|---|
 | mean IoU | 0.5931 ± 0.0210 | **0.6328 ± 0.0126** | **+0.040** |
-| mean Dice | 0.7232 ± 0.0202 | **0.7718 ± 0.0013** | **+0.049** |
+| mean Dice | 0.7232 ± 0.0202 | **0.7670 ± 0.0109** | **+0.044** |
 | gap to paper (IoU) | −0.076 | **−0.037** | — |
 | typical train/val gap | +0.31 | +0.12 | −60% |
 | peak epoch | ~ep100 | ep282–390 | — |
@@ -81,9 +81,9 @@ Implemented in `build_train_transform()` in `train.py`.
 
 | run | best IoU | peak ep | best Dice | log dir |
 |---|---|---|---|---|
-| `busi_split41_aug` | 0.6215 | 390 | 0.7732 | `models/busi_split41_aug/` |
-| `busi_split42_aug` | 0.6306 | 282 | 0.7709 | `models/busi_split42_aug/` |
-| `busi_split43_aug` | **0.6464** | 331 | 0.7711 | `models/busi_split43_aug/` |
+| `busi_split41_aug` | 0.6215 | 390 | 0.7581 | `models/busi_split41_aug/` |
+| `busi_split42_aug` | 0.6306 | 282 | 0.7631 | `models/busi_split42_aug/` |
+| `busi_split43_aug` | **0.6464** | 331 | 0.7798 | `models/busi_split43_aug/` |
 
 **All three splits improved** (+0.020, +0.061, +0.038).
 

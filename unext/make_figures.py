@@ -458,9 +458,17 @@ def fig8_modifications():
         # silently puts the text on top of its own marker.
         va = 'bottom' if d_iou >= 0 else 'top'
         dy = 14 if d_iou >= 0 else -14
+        # Points close together in x collide when both labels are centred; nudge
+        # each side outward instead. Skip-Fusion and the boundary gate sit within
+        # 0.03 GFLOPs of each other and overlapped at the default centring.
+        near = [o for o in rows if o is not (label, d_iou, d_flops, colour, n)
+                and abs(o[2] - d_flops) < 0.045 and abs(o[1] - d_iou) < 0.004]
+        ha = 'center'
+        if near:
+            ha = 'right' if d_flops <= near[0][2] else 'left'
         ax.annotate(f'{label}\n{d_iou:+.4f} ({n} split{"s" if n > 1 else ""})',
                     (d_flops, d_iou), xytext=(0, dy), textcoords='offset points',
-                    ha='center', va=va, fontsize=9.5, color=colour, weight='bold',
+                    ha=ha, va=va, fontsize=9.5, color=colour, weight='bold',
                     annotation_clip=False)
 
     ax.set_xlabel('change in GFLOPs vs baseline  (left = cheaper)')
@@ -470,7 +478,9 @@ def fig8_modifications():
     # Pad the limits first so annotations have room, then shade. The claim is "no more
     # expensive and better", so the region includes x == 0 (free) as well as x < 0.
     xl, yl = ax.get_xlim(), ax.get_ylim()
-    px, py = (xl[1] - xl[0]) * 0.18, (yl[1] - yl[0]) * 0.18
+    # Generous x-padding: labels are nudged left/right to avoid collisions, so they
+    # need room beyond the outermost points or they clip at the axes.
+    px, py = (xl[1] - xl[0]) * 0.30, (yl[1] - yl[0]) * 0.18
     ax.set_xlim(xl[0] - px, xl[1] + px)
     ax.set_ylim(yl[0] - py, yl[1] + py)
     xl, yl = ax.get_xlim(), ax.get_ylim()

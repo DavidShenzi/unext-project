@@ -89,19 +89,51 @@ def build_queue():
                         init_from=parent, skip_identity_init='True',
                         freeze_except='fuse', lr=1e-3))
 
-    # ---- stage 3: extra seeds for statistical power ---------------------------------
+    # ---- stage 3: extra seeds, weighted toward the open question ---------------------
+    # The wavelet comparison is settled: -0.0014 at p = 0.72 over three splits, with the
+    # boundary metrics consistently (if not significantly) negative. More seeds there buy
+    # precision on a null. The boundary-gate comparison is still open -- its +0.0015 is
+    # confounded with 100 epochs of whole-backbone fine-tuning until the controls land --
+    # so the remaining GPU time goes there.
+    #
+    # Wavelet keeps two seed repeats only, enough to show the null is not an artefact of
+    # one initialisation. Both are on split 41 and 42; split 43's is dropped.
+    for s_ in SPLITS[:2]:
+        jobs.append(job(f'busi_split{s_}_wave_s101', 'UNext_Wave', 400, 101, s_))
+
+    # Boundary gate: both seeds, all three splits, in both training regimes. The frozen
+    # variant (_bndf) is the one that isolates the gate, so it is seeded too.
     for seed in EXTRA_SEEDS:
-        for s in SPLITS:
-            jobs.append(job(f'busi_split{s}_wave_s{seed}', 'UNext_Wave', 400, seed, s))
-        for s in SPLITS:
-            parent = f'models/busi_split{s}_aug/model.pth'
-            jobs.append(job(f'busi_split{s}_bnd_s{seed}', 'UNext_Boundary', 100, seed, s,
+        for s_ in SPLITS:
+            parent = f'models/busi_split{s_}_aug/model.pth'
+            jobs.append(job(f'busi_split{s_}_bnd_s{seed}', 'UNext_Boundary', 100, seed, s_,
                             init_from=parent, skip_identity_init='True'))
+            jobs.append(job(f'busi_split{s_}_bndf_s{seed}', 'UNext_Boundary', 100, seed, s_,
+                            init_from=parent, skip_identity_init='True',
+                            freeze_except='fuse', lr=1e-3))
     return jobs
 
 
 def done(name):
-    return os.path.exists(os.path.join(HERE, 'models', name, 'model.pth'))
+    """Has this job actually finished, not merely started?
+
+    train.py writes model.pth every time validation improves, so a checkpoint exists
+    from the first good epoch onward. Testing only for the file would let an interrupted
+    run be skipped as complete -- busi_split41_wave_s101 had a model.pth at epoch 167 of
+    400. Require the log to show the full schedule as well.
+    """
+    d = os.path.join(HERE, 'models', name)
+    if not os.path.exists(os.path.join(d, 'model.pth')):
+        return False
+    log = os.path.join(d, 'log.csv')
+    if not os.path.exists(log):
+        return False
+    want = 400 if '_wave' in name else 100
+    try:
+        with open(log, encoding='utf-8') as f:
+            return sum(1 for r in csv.DictReader(f) if r.get('val_iou')) >= want
+    except Exception:
+        return False
 
 
 def record(row):

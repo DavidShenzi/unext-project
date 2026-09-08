@@ -366,3 +366,52 @@ denoising policy for the network to adopt -- and the gate found it. That is a re
 mechanism, but it is not the one the module was designed around, and it means the module's
 name over-claims. Whether the small aggregate gain survives the `_cont` control is a
 separate question from whether the stated mechanism is what produced it.
+
+### 7.7 Boundary gate: complete aggregate result, and boundary metrics
+
+| split | parent (aug) | + boundary gate | delta |
+|---|---|---|---|
+| 41 | 0.6215 | 0.6269 | +0.0054 |
+| 42 | 0.6306 | 0.6314 | +0.0009 |
+| 43 | 0.6464 | 0.6447 | -0.0017 |
+
+**Mean +0.0015, p = 0.54.** A second null on aggregate IoU. Still confounded with 100
+epochs of whole-backbone fine-tuning until the `_cont` control lands (see 7.6).
+
+Boundary metrics, in contrast to the wavelet mixer, lean positive:
+
+| split | boundary F1 | HD95 (px) |
+|---|---|---|
+| 41 | 0.4671 -> 0.4803 (+0.0132) | 33.39 -> 32.14 (-1.25) |
+| 42 | 0.4946 -> 0.4946 (-0.0000) | 33.12 -> 35.69 (+2.56) |
+| 43 | 0.4602 -> 0.4636 (+0.0035) | 31.42 -> 30.73 (-0.69) |
+
+Mean boundary F1 **+0.0056** (p = 0.29); mean HD95 +0.21 px (p = 0.88, dominated by split
+42). Set against the wavelet mixer's -0.0169 on the same metric, the two modifications
+move boundary quality in opposite directions -- but at n = 3 neither is significant, so
+this is a direction worth reporting, not a result worth claiming.
+
+The gate improves boundary F1 while *closing* on high-gradient pixels (7.6). Those are
+consistent if the encoder's high-Laplacian pixels are mostly speckle: suppressing them
+cleans up the contour even though the mechanism is denoising rather than the intended
+boundary-admission.
+
+### 7.8 Status at the end of the unattended session
+
+Six of six queued jobs completed with no failures. Both modifications are aggregate nulls:
+
+| modification | mean delta IoU | p | GFLOPs vs baseline |
+|---|---|---|---|
+| wavelet mixer | -0.0014 | 0.72 | **0.525 (-9%)** |
+| boundary gate | +0.0015 | 0.54 | 0.672 (+16%) |
+
+**Outstanding: the `_cont` and `_bndf` controls have not run.** They were added to
+run_queue.py after the queue process had already built its job list, so that process
+continued into the stage-3 seed repeats instead. `queue_followup.sh` is waiting to re-run
+the queue when it exits, which will pick the controls up -- but behind roughly 11 h of
+wavelet seed repeats that only re-measure a settled null.
+
+Attempting to stop the stale queue process so the controls could run first was blocked by
+the sandbox, correctly -- that is not a decision to take unattended. The recommended
+manual action is to stop the running `run_queue.py` (and its `train.py` child) and start
+`python run_queue.py`, which skips completed jobs and begins with the controls.

@@ -506,3 +506,47 @@ threshold. If the wavelet model is simply less confident rather than better beha
 threshold sweep will show its advantage collapsing; if the advantage holds across
 thresholds, it is architectural. That sweep is inference-only and is the highest-value
 outstanding analysis.
+
+### 7.11 Threshold sweep: is the wavelet advantage architectural or calibration?
+
+The false-positive result in 7.10 is measured at a fixed 0.5 threshold, which leaves the
+obvious objection open: a model whose outputs simply sit lower would raise fewer alarms on
+everything, normal scans included, and that advantage would vanish the moment anyone moved
+the threshold. `threshold_sweep.py` tests this by sweeping 0.1-0.9 and measuring both
+sides at each threshold -- false positives on the 133 normals, and lesion IoU on the run's
+own validation split.
+
+**At matched lesion IoU** (baseline at its best threshold, wavelet at whatever threshold
+reproduces that IoU):
+
+| pair | baseline | wavelet at matched IoU | false positives |
+|---|---|---|---|
+| split41 | 0.6239 @ thr 0.4, meanFP 4239 | 0.6247 @ thr 0.5, meanFP 2585 | **-39%** |
+| split43 | 0.6491 @ thr 0.5, meanFP 2635 | 0.6512 @ thr 0.7, meanFP 2143 | **-19%** |
+| split42 | 0.6341 @ thr 0.4 | never reaches it (best 0.6292) | no match exists |
+| split41 s101 | 0.6376 @ thr 0.4 | never reaches it (best 0.6191) | no match exists |
+
+Two pairs show a real reduction at equal segmentation quality. Two cannot be matched at
+all, because the wavelet run's IoU ceiling on that split sits below the baseline's -- which
+is itself informative, and is not visible in the 0.5-threshold table.
+
+**Two arguments against the pure-calibration explanation:**
+
+1. Interpolating the wavelet curve to each baseline threshold's IoU, the wavelet model has
+   fewer false positives at **15 of 20 matched-IoU points (75%)**.
+2. A less-confident model would peak at a *lower* threshold. The wavelet run peaks at
+   **0.5 against the baseline's 0.4** -- the opposite direction.
+
+**But the statistics do not support a strong claim.** The naive binomial on 15/20 gives
+p = 0.041, and that number should not be reported: the twenty points are nine correlated
+thresholds within each of four pairs, not twenty independent trials. At the honest unit of
+analysis the tally is 3 pairs favouring the wavelet mixer, 1 split evenly, sign test
+**p = 0.625**.
+
+**Verdict.** The advantage is not *merely* calibration -- the threshold-peak direction and
+the matched-IoU reductions on two splits both argue against that. But it is not
+established as architectural either, and on two of four pairs the wavelet model simply
+cannot reach the baseline's segmentation quality at any threshold. The defensible claim is
+narrower than 7.10's p = 0.0117 suggests: **at the operating point both models are trained
+and selected for, the wavelet mixer raises far fewer false alarms on lesion-free tissue;
+whether that survives arbitrary re-thresholding is not resolved by n = 4.**

@@ -270,46 +270,55 @@ Note the ~31 s/epoch is data-loader bound, not GPU bound (`num_workers=0`, a del
 choice for Windows -- see the note in `train.py`). Raw GPU step time would predict roughly
 half that.
 
-### 7.5 Wavelet mixer: results after two splits
+### 7.5 Wavelet mixer: result (3 splits, complete)
 
 | split | baseline (aug) | wavelet | delta |
 |---|---|---|---|
 | 41 | 0.6215 | 0.6246 | +0.0031 |
 | 42 | 0.6306 | 0.6226 | -0.0080 |
+| 43 | 0.6464 | 0.6471 | +0.0007 |
 
-Mean -0.0025, p = 0.73 (n = 2). On aggregate IoU there is no detectable effect either way.
+**Mean -0.0014, p = 0.72.** No effect on aggregate IoU in either direction. Given the
+block is 9% cheaper in GFLOPs, "matches the baseline at lower cost" is the fair summary
+of the headline metric -- not an improvement in accuracy.
 
-The boundary metrics are more informative, and they point the same direction on both
-splits -- against the hypothesis:
+Boundary-localised metrics are consistently worse, on all three splits:
 
-| split | boundary F1 | HD95 (px) | IoU per image |
-|---|---|---|---|
-| 41 | 0.4671 -> 0.4578 (-0.009) | 33.39 -> 34.92 (+1.5 worse) | 0.6790 -> 0.6629 |
-| 42 | 0.4946 -> 0.4564 (-0.038) | 33.12 -> 36.83 (+3.7 worse) | 0.6706 -> 0.6563 |
+| split | boundary F1 | HD95 (px) |
+|---|---|---|
+| 41 | 0.4671 -> 0.4578 (-0.0093) | 33.39 -> 34.92 (+1.52) |
+| 42 | 0.4946 -> 0.4564 (-0.0382) | 33.12 -> 36.83 (+3.71) |
+| 43 | 0.4602 -> 0.4569 (-0.0033) | 31.42 -> 32.66 (+1.25) |
 
-**Note the two IoU conventions disagree in sign on split 41.** The checkpoint is selected
-on *aggregate* val IoU, where large lesions dominate and the wavelet run wins (+0.0031);
-per image it loses (-0.016). This is exactly the discrepancy flagged in the metric note at
-the end of section 6, showing up in practice.
+Mean boundary F1 -0.0169 (p = 0.26), mean HD95 +2.16 px (p = 0.11). Three out of three in
+the same direction on both metrics, but with n = 3 that is **not** statistically
+significant -- an exact sign test on 3/3 gives p = 0.25 at best. The defensible claim is
+"no benefit, with a consistent tendency toward worse boundaries", not "makes boundaries
+worse".
 
-Broken down by lesion area (terciles of the ground-truth mask):
+**A pattern that did not survive the third split.** After splits 41 and 42 the penalty on
+small lesions looked strikingly reproducible (-0.0356 and -0.0361, terciles of
+ground-truth mask area). Split 43 came out +0.0078:
 
 | split | small | medium | large |
 |---|---|---|---|
-| 41 | **-0.0356** | -0.0124 | -0.0006 |
-| 42 | **-0.0361** | +0.0147 | -0.0213 |
+| 41 | -0.0356 | -0.0124 | -0.0006 |
+| 42 | -0.0361 | +0.0147 | -0.0213 |
+| 43 | +0.0078 | +0.0122 | +0.0015 |
 
-The small-lesion penalty reproduces almost exactly across two independent splits
-(-0.0356, -0.0361) while the medium and large columns disagree in sign, so smallness is
-the robust axis. That is backwards from the design intent: small lesions are where margin
-precision matters most, and they are where this mixer is worst.
+Mean -0.0213, p = 0.28. Two runs agreeing to three decimal places was coincidence, not
+signal -- a useful reminder of what n = 2 is worth on this dataset.
 
-**Likely mechanism.** Inspecting the trained weights, the detail convolutions did learn
-(they start at exactly zero and reach mean |w| ~0.012, comparable to the MLP's own
-~0.015), so the path is not dead. But `detail.2` -- the HH diagonal band -- ends up
-roughly *half* the magnitude of the two oriented bands in every block. The network
-systematically down-weighted the diagonal detail. In B-mode ultrasound, HH is dominated
-by speckle rather than anatomy, so this reads as the model learning to suppress a band
-that carries mostly noise -- the risk anticipated in section 7.1 before the runs started.
+**Note the two IoU conventions disagree in sign on split 41.** The checkpoint is selected
+on *aggregate* val IoU, where large lesions dominate and the wavelet run wins (+0.0031);
+per image it loses (-0.016). This is the discrepancy flagged in the metric note at the end
+of section 6, showing up in practice.
 
-Split 43 was still training when this was written.
+**Mechanism.** The detail convolutions did learn -- they start at exactly zero and reach
+mean |w| ~0.012, comparable to the MLP's own ~0.015, so the path is not dead. But
+`detail.2` (the HH diagonal band) ends up roughly *half* the magnitude of the two oriented
+bands in every block. In B-mode ultrasound, HH is dominated by speckle rather than
+anatomy, so the network appears to have learned to suppress a band carrying mostly noise
+-- the risk anticipated in section 7.1 before the runs started. This is an observation
+about learned weights, not a controlled experiment; an ablation that removes the HH branch
+entirely would be the way to test it properly.

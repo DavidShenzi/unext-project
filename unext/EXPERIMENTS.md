@@ -13,7 +13,7 @@ Paper's reported BUSI numbers: **IoU 0.6695 / F1-Dice 0.7937** (mean of 3 random
 | | baseline (paper aug) | strong aug | Δ |
 |---|---|---|---|
 | mean IoU | 0.5931 ± 0.0210 | **0.6328 ± 0.0126** | **+0.040** |
-| mean Dice | 0.7232 ± 0.0202 | **0.7670 ± 0.0109** | **+0.044** |
+| mean Dice | 0.7344 ± 0.0208 | **0.7670 ± 0.0114** | **+0.033** |
 | gap to paper (IoU) | −0.076 | **−0.037** | — |
 | typical train/val gap | +0.31 | +0.12 | −60% |
 | peak epoch | ~ep100 | ep282–390 | — |
@@ -104,10 +104,10 @@ ep282–390. Any comparison at a short budget will miss this entirely — and an
 draft of this analysis overstated the gain by comparing 400-epoch augmented runs against
 150–250-epoch baselines.
 
-Secondary finding: **Dice variance collapses 15×** (±0.0202 → ±0.0013). All three
-augmented runs land within 0.002 of each other on Dice — augmentation makes results
-markedly more reproducible, plausibly because baseline spread partly reflected how
-severely each split overfit.
+Secondary finding: **the split-to-split Dice spread narrows 4.4x** (per-image, ±0.0242 → ±0.0054; on the aggregate convention 1.8x, ±0.0208 → ±0.0114). An earlier revision quoted 15x against ±0.0013, a figure that came from the 8-run partial eval set and does not survive full 33/33 coverage. The three augmented
+runs span 0.0107 on per-image Dice, against 0.0421 for the baselines —
+augmentation makes results more reproducible, plausibly because baseline spread partly
+reflected how severely each split overfit.
 
 ---
 
@@ -405,16 +405,20 @@ Six of six queued jobs completed with no failures. Both modifications are aggreg
 | wavelet mixer | -0.0014 | 0.72 | **0.525 (-9%)** |
 | boundary gate | +0.0015 | 0.54 | 0.672 (+16%) |
 
-**Outstanding: the `_cont` and `_bndf` controls have not run.** They were added to
-run_queue.py after the queue process had already built its job list, so that process
-continued into the stage-3 seed repeats instead. `queue_followup.sh` is waiting to re-run
-the queue when it exits, which will pick the controls up -- but behind roughly 11 h of
-wavelet seed repeats that only re-measure a settled null.
+**Resolved: the controls ran on 8 Sep, 08:29-10:49.** All six completed the full
+100-epoch schedule. They change the reading of the boundary gate materially, because the
+`_bnd` figure above compares against the *graft parent*, which confounds the gate with 100
+epochs of ordinary fine-tuning.
 
-Attempting to stop the stale queue process so the controls could run first was blocked by
-the sandbox, correctly -- that is not a decision to take unattended. The recommended
-manual action is to stop the running `run_queue.py` (and its `train.py` child) and start
-`python run_queue.py`, which skips completed jobs and begins with the controls.
+| comparison | what it isolates | mean delta | p |
+|---|---|---|---|
+| `_cont` vs `_aug` | fine-tuning alone, no gate | -0.0026 | 0.099 |
+| **`_bnd` vs `_cont`** | **the gate itself** | **+0.0041** | **0.232** |
+| `_bndf` vs `_cont` | gate only, backbone frozen | -0.0009 | 0.675 |
+
+So the gate's effect roughly triples once the fine-tuning penalty is removed -- and is still
+a null: +0.0041 sits below the 0.0107 seed-noise floor established in 7.9, and all three
+pairs match on both seed and AMP, so this is the cleanest measurement in the section.
 
 ### 7.9 Validity check on the modification runs
 
@@ -436,6 +440,22 @@ change. This does not overturn either conclusion -- both modifications were null
 adding init noise makes a null easier to obtain, not harder -- but the effect sizes are
 noisier than a clean paired design would give, and the p-values are correspondingly
 weaker. Any future run should pass `--seed 41` explicitly to match the baselines.
+
+**AMP confound, previously undisclosed.** The same audit found a second difference the
+seed table above does not capture: every `_wave`, `_bnd`, `_bndf` and `_cont` run sets
+`amp: true`, while their `_aug` graft parents ran `amp: false`. So those comparisons vary
+mixed-precision as well as architecture and seed. The `_ftl` comparison is unaffected
+within pairs (seed 41 runs are `amp: false`, seed 101 runs are `amp: true`, matched on both
+sides) -- but that means the seed-41-positive / seed-101-negative pattern in the Focal
+Tversky results is *perfectly confounded with AMP*, and cannot be attributed to the seed
+with the runs that exist.
+
+**Eval coverage was incomplete until 8 Sep.** `eval.yml` existed for only 8 of 33 runs, and
+Dice, GFLOPs and latency are stored nowhere else -- so every Dice figure quoted in earlier
+revisions of this document came from those 8 runs. In particular the Focal Tversky Dice
+column rested on a single run (`busi_split43_ftl`). `val.py` has since been run on the
+remaining 25; coverage is now 33/33, and the aggregate-convention means are 0.7344 ± 0.0208
+(baseline), 0.7670 ± 0.0114 (strong augmentation), 0.7759 ± 0.0132 (Focal Tversky).
 
 **The noise floor matters more than the effect sizes.** Comparing `busi_split41_wave`
 (seed 41) against `busi_split41_wave_s101` (seed 101) at matched epoch 178 gives a
@@ -475,7 +495,7 @@ runs with the reverse -- and the "correlation" is the line joining their centroi
 correct statement is about the augmentation change specifically, not about IoU in general.
 
 **Corrected: checkpoint selection is 26 of 32, not 27.** Selecting on min val_loss rather
-than max val_iou loses IoU in 26 runs, ties in 6, and **gains in none** (Wilcoxon
+than max val_iou loses IoU in 26 runs, ties in 7, and **gains in none** (Wilcoxon
 p = 3.0e-08). The "never gains" half is the stronger claim and is exact.
 
 **Corrected: the overfitting gap figures.** The quoted +0.33-0.36 vs +0.08-0.13 were

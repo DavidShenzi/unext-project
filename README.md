@@ -24,30 +24,47 @@ of TransUNet. We reproduced it on the BUSI breast-ultrasound dataset.
 describes.
 
 **The accuracy did not.** Running the authors' own command we measured **IoU 0.5931 ± 0.0210**
-against the reported **0.6695** — across six runs and four configurations, none above 0.602.
+against the reported **0.6695** — across six runs and four configurations, the best of which
+reached 0.6085.
 
 We eliminated five explanations (resolution, mixed precision, decision threshold, split
 composition, and split averaging — the last at 3.6σ), and found that three other published
 groups independently report baseline UNeXt numbers close to ours rather than the paper's.
 
 **Diagnosis: severe overfitting.** Validation peaks near epoch 100 and then declines for 300+
-epochs, ending with a **+0.31** train/validation gap. The paper's augmentation (90° rotation
-and flips only) is too weak for 518 training images.
+epochs, ending with a **+0.31** train/validation gap at the final epoch (**+0.16** at the
+selected checkpoint). The paper's augmentation (90° rotation and flips only) is too weak for
+518 training images.
 
-**Fix — two changes to the training recipe, neither adding a single parameter:**
+**Fix — stronger augmentation, adding not a single parameter:**
 
 | stage | mean IoU (3 splits) | Δ |
 |---|---|---|
 | Paper recipe | 0.5931 ± 0.0210 | — |
-| + strong augmentation | 0.6328 ± 0.0126 | +0.040 |
-| + Focal Tversky loss | **0.6461 ± 0.0146** | +0.013 |
-| | | **+0.053 total** |
+| + strong augmentation | **0.6328 ± 0.0126** | **+0.040** |
 
-That recovers ~70% of the gap. By contrast the two *architectural* modifications we ported from
-follow-up papers gave +0.006 (Skip-Fusion, at +11% compute) and exactly 0.000 (SE attention).
+At a *matched* training budget the gain is **+0.023 (p = 0.24)** — augmentation does not converge
+faster, it removes the ceiling that stalls the baseline near epoch 100.
 
-**Takeaway: for this network on this dataset, the training recipe mattered far more than the
-architecture.**
+**No architectural modification cleared our own noise floor.** Rerunning identical
+configurations with only the random seed changed moves IoU by **0.0107** on average (6 pairs,
+range 0.003–0.019). Every modification we tried is smaller than that:
+
+| modification | params | GFLOPs | Δ IoU | paired runs |
+|---|---|---|---|---|
+| SE attention | +0.55% | — | 0.000 | 1 |
+| Skip-Fusion | +5.90% | +11% | +0.002 | 1 |
+| Focal Tversky loss | — | — | +0.005 (p = 0.32) | 6 |
+| Boundary gate | +8.84% | +16% | +0.004 (p = 0.23) | 3 |
+| **Wavelet mixer** | +1.43% | **−9%** | −0.001 (p = 0.72) | 3 |
+
+The wavelet mixer is the one worth reporting: identical accuracy for **9% fewer FLOPs**, and on
+the 133 held-out `normal` scans it leaves far more of them completely clean (**14.8%** mean over
+4 runs, versus **5.5%** over 15 baseline runs). Only 2 of those 4 pairs match on seed, so we
+quote no p-value — but the effect is the same size in both groups (+0.113 vs +0.105).
+
+**Takeaway: the training recipe mattered more than the architecture — and most reported gains of
+this size are indistinguishable from the random seed.**
 
 Full detail: [`project_notes.md`](project_notes.md) §7 · per-run log: [`unext/EXPERIMENTS.md`](unext/EXPERIMENTS.md)
 
@@ -61,7 +78,8 @@ Full detail: [`project_notes.md`](project_notes.md) §7 · per-run log: [`unext/
 ├── presentation_outline.md     slide-by-slide outline
 ├── UNeXt_presentation.pptx     the deck (speaker notes in every slide)
 └── unext/
-    ├── archs.py                UNext, UNext_S, UNext_SE, UNext_SkipFusion
+    ├── archs.py                UNext, UNext_S, UNext_SE, UNext_SkipFusion,
+    │                           UNext_Wave, UNext_Boundary
     ├── train.py                training loop
     ├── val.py                  evaluation + GFLOPs/latency benchmarks
     ├── losses.py               BCEDice, FocalTversky, BCEFocalTversky
@@ -70,10 +88,19 @@ Full detail: [`project_notes.md`](project_notes.md) §7 · per-run log: [`unext/
     ├── prepare_isic.py         raw ISIC 2018 → loader layout
     ├── smoke_test.py           architecture checks, no data needed
     ├── compare_runs.py         results table + curves
+    ├── analyze_mods.py         paired comparisons + paired t-tests
+    ├── normal_eval.py          false positives on the 133 healthy scans
+    ├── threshold_sweep.py      false positives vs lesion IoU across thresholds
+    ├── boundary_eval.py        boundary F1 + Hausdorff-95
+    ├── run_queue.py            unattended job queue
     ├── make_figures.py         all presentation figures
     ├── make_pptx.py            builds the deck
+    ├── make_speaker_pptx.py    speaker notes (English)
+    ├── make_speaker_pptx_he.py speaker notes (Hebrew, RTL)
     ├── EXPERIMENTS.md          per-run log: what was run, what it scored
-    ├── models/<run>/           config.yml + log.csv per run (weights gitignored)
+    ├── results_table.csv       every run, every metric
+    ├── normals.csv             false-positive burden per run
+    ├── models/<run>/           config.yml + log.csv + eval.yml (weights gitignored)
     └── figures/                generated figures
 ```
 
@@ -83,33 +110,124 @@ files), raw stdout logs (53 MB of progress-bar spam), and the upstream clone.
 
 ---
 
-## Reproducing
+## Running everything
+
+### 1. Install
 
 ```bash
 pip install -r unext/requirements.txt        # torch not pinned; see the file
 cd unext
-python smoke_test.py                         # verifies the architecture, no data needed
+python smoke_test.py                         # architecture checks — no data needed
 ```
 
+`smoke_test.py` instantiates `UNext`, `UNext_S` and `UNext_SE` at 256² and 512², and checks
+output shapes, a backward pass and the parameter counts against the paper's stated 1.47 M. If it
+passes, the install is working even without the dataset. (It predates the wavelet and boundary
+architectures and does not cover them; `python -c "import archs"` plus a training run is the
+check for those.)
+
+### 2. Get the data
+
 Download `Dataset_BUSI_with_GT` (registration required —
-[Cairo University](https://scholar.cu.edu.eg/?q=afahmy/pages/dataset) or the Kaggle mirror), then:
+[Cairo University](https://scholar.cu.edu.eg/?q=afahmy/pages/dataset) or the Kaggle mirror),
+then:
 
 ```bash
 python prepare_busi.py --raw /path/to/Dataset_BUSI_with_GT
+```
 
-# baseline — the authors' recipe
+This writes `inputs/busi/{images,masks}` and excludes the 133 `normal` (empty-mask) images,
+giving 437 benign + 210 malignant = **647**, matching the paper's stated count. Keep the raw
+archive: the false-positive evaluation below reads the `normal` cases directly from it.
+
+### 3. Train
+
+Every run writes `models/<name>/` containing `config.yml`, `log.csv` (per-epoch metrics),
+`summary.yml` and `model.pth`. A run is reproducible from its own `config.yml`.
+
+```bash
+# the paper's recipe — the reproduction baseline
 python train.py --dataset busi --arch UNext --name base --epochs 400 --split_seed 41
 
 # our best configuration
 python train.py --dataset busi --arch UNext --name best --epochs 400 --split_seed 41 \
-                --aug strong --loss BCEFocalTverskyLoss
+                --aug strong
 
-python val.py --name best
-python compare_runs.py
+# the wavelet mixer (trains from scratch — no baseline to graft onto)
+python train.py --dataset busi --arch UNext_Wave --name wave --epochs 400 \
+                --seed 41 --split_seed 41 --aug strong
+
+# a grafted modification: start from a trained checkpoint, train only the new layers
+python train.py --dataset busi --arch UNext_Boundary --name bnd --epochs 100 \
+                --seed 41 --split_seed 41 --aug strong \
+                --init_from models/best/model.pth --skip_identity_init True \
+                --freeze_except fuse --lr 1e-3
 ```
 
-`prepare_busi.py` excludes the 133 `normal` (empty-mask) images, giving 437 benign + 210
-malignant = **647**, matching the paper's stated count.
+Key flags:
+
+| flag | what it does |
+|---|---|
+| `--arch` | `UNext`, `UNext_S`, `UNext_SE`, `UNext_SkipFusion`, `UNext_Wave`, `UNext_Boundary` |
+| `--aug` | `paper` (flips + 90° rotations) or `strong` (adds affine, brightness/contrast, gamma, elastic) |
+| `--loss` | `BCEDiceLoss` (default) or `BCEFocalTverskyLoss` |
+| `--seed` | weight initialisation — **vary this to measure the noise floor** |
+| `--split_seed` | which images land in validation — vary this for a different data split |
+| `--init_from` | graft from an existing checkpoint (`strict=False`, so new layers are allowed) |
+| `--freeze_except` | comma-separated name fragments; everything else is frozen |
+| `--stop_after` | halt early without changing the cosine schedule's `T_max` |
+| `--resume` | continue an interrupted run from its full-state checkpoint |
+
+**Pair runs correctly.** A comparison is only clean when the two runs share **both** `--seed`
+and `--split_seed` and differ in exactly one factor. Two of our four wavelet pairs violate this
+(see the caveat above); it is the single easiest mistake to make here.
+
+### 4. Evaluate
+
+```bash
+python val.py --name best          # IoU/Dice (both conventions), GFLOPs, CPU+GPU latency
+                                   # -> models/best/eval.yml
+python compare_runs.py             # every run -> results_table.csv + curves.png
+python analyze_mods.py             # paired per-split comparisons + paired t-tests
+```
+
+`val.py` must be run per model; `results_table.csv` is blank for any run without an `eval.yml`.
+
+### 5. The extra analyses
+
+```bash
+# false positives on the 133 held-out healthy scans (inference only, no training)
+python normal_eval.py --csv normals.csv
+
+# is the wavelet advantage just a lower operating point? sweep the threshold and
+# measure false positives and lesion IoU together
+python threshold_sweep.py
+
+# boundary-quality metrics: boundary F1 in a tolerance band, plus Hausdorff-95
+python boundary_eval.py --runs best
+
+# regenerate every presentation figure
+python make_figures.py
+```
+
+### 6. Build the decks
+
+```bash
+python make_pptx.py              # -> UNeXt_presentation.pptx      (16 slides)
+python make_speaker_pptx.py      # -> UNeXt_speaker_notes.pptx     (English)
+python make_speaker_pptx_he.py   # -> UNeXt_speaker_notes_HE.pptx  (Hebrew, RTL)
+```
+
+### Running many jobs unattended
+
+`run_queue.py` runs a priority-ordered job list one at a time, survives individual failures,
+retries once at a smaller batch size on CUDA OOM, and skips jobs already complete — so it is
+safe to restart.
+
+```bash
+python run_queue.py --dry-run    # print the plan, run nothing
+python run_queue.py              # run everything not already done
+```
 
 ---
 

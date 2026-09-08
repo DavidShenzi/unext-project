@@ -65,11 +65,16 @@ def established_seed_jobs():
     initialisations per condition per split.
     """
     jobs = []
-    for seed in EXTRA_SEEDS:
-        for s_ in SPLITS:
-            jobs.append(job(f'busi_split{s_}_aug_s{seed}', 'UNext', 400, seed, s_))
-            jobs.append(job(f'busi_split{s_}_ftl_s{seed}', 'UNext', 400, seed, s_,
-                            loss='BCEFocalTverskyLoss'))
+    # Seed 101 only. A second initialisation per split is what makes the Focal Tversky
+    # comparison defensible -- split 41 alone currently has two seeds, and it is the split
+    # whose gain shrank (+0.0182 -> +0.0080), so splits 42 and 43 are needed to tell
+    # whether that is general or particular to 41. A third seed (202) would refine a
+    # number already destined to be reported as non-significant, at ~11 h, so it is not
+    # queued. EXTRA_SEEDS still holds 202 if that changes.
+    for s_ in SPLITS:
+        jobs.append(job(f'busi_split{s_}_aug_s101', 'UNext', 400, 101, s_))
+        jobs.append(job(f'busi_split{s_}_ftl_s101', 'UNext', 400, 101, s_,
+                        loss='BCEFocalTverskyLoss'))
     return jobs
 
 

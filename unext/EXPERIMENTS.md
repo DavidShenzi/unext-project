@@ -282,7 +282,7 @@ half that.
 block is 9% cheaper in GFLOPs, "matches the baseline at lower cost" is the fair summary
 of the headline metric -- not an improvement in accuracy.
 
-Boundary-localised metrics are consistently worse, on all three splits:
+Boundary-localised metrics are consistently worse, on all three splits (regenerated 8 Sep and saved to `boundary.csv`; every value below reproduces exactly):
 
 | split | boundary F1 | HD95 (px) |
 |---|---|---|
@@ -378,7 +378,7 @@ separate question from whether the stated mechanism is what produced it.
 **Mean +0.0015, p = 0.54.** A second null on aggregate IoU. Still confounded with 100
 epochs of whole-backbone fine-tuning until the `_cont` control lands (see 7.6).
 
-Boundary metrics, in contrast to the wavelet mixer, lean positive:
+Boundary metrics, in contrast to the wavelet mixer, lean positive (also in `boundary.csv`):
 
 | split | boundary F1 | HD95 (px) |
 |---|---|---|

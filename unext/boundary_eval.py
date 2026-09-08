@@ -143,7 +143,12 @@ def main():
     ap.add_argument('--compare', default=None,
                     help='suffix of a modification, e.g. "wave" or "bnd"')
     ap.add_argument('--tol', type=int, default=2)
+    ap.add_argument('--csv', default=None,
+                    help='write the per-run results to this file. Without it these '
+                         'numbers exist only in terminal output and cannot be cited.')
     a = ap.parse_args()
+
+    rows = []
 
     if a.compare:
         pairs = [(f'busi_split{s}_{a.compare}', f'busi_split{s}_aug') for s in (41, 42, 43)]
@@ -158,6 +163,8 @@ def main():
             dhd = rm['hd95'] - rb['hd95']
             d_bf.append(dbf)
             d_hd.append(dhd)
+            rows += [dict(rb, role='baseline', pair=mod, tol=a.tol),
+                     dict(rm, role='modification', pair=mod, tol=a.tol)]
             print(f'{mod.split("split")[1][:2]:>6}  '
                   f'{rb["boundary_f1"]:.4f} -> {rm["boundary_f1"]:.4f} ({dbf:+.4f})  '
                   f'{rb["hd95"]:6.2f} -> {rm["hd95"]:6.2f} ({dhd:+.2f})')
@@ -166,15 +173,30 @@ def main():
                   f'(higher is better, n={len(d_bf)})')
             print(f'mean HD95 delta        {np.mean(d_hd):+.2f} px  '
                   f'(LOWER is better)')
-        return
+    else:
+        for r in (a.runs or []):
+            res = evaluate(r, a.tol)
+            if res is None:
+                print(f'{r}: no checkpoint')
+                continue
+            rows.append(dict(res, role='single', pair='', tol=a.tol))
+            print(f'{res["run"]:26s} n={res["n"]:3d}  boundary_F1={res["boundary_f1"]:.4f}  '
+                  f'HD95={res["hd95"]:6.2f}px  IoU/img={res["iou_per_image"]:.4f}')
 
-    for r in (a.runs or []):
-        res = evaluate(r, a.tol)
-        if res is None:
-            print(f'{r}: no checkpoint')
-            continue
-        print(f'{res["run"]:26s} n={res["n"]:3d}  boundary_F1={res["boundary_f1"]:.4f}  '
-              f'HD95={res["hd95"]:6.2f}px  IoU/img={res["iou_per_image"]:.4f}')
+    if a.csv and rows:
+        import csv as _csv
+        path = os.path.join(HERE, a.csv)
+        # Append across invocations: the wavelet and boundary-gate comparisons are
+        # separate runs of this script, and both belong in the same table.
+        exists = os.path.exists(path)
+        fields = ['run', 'role', 'pair', 'tol', 'n', 'boundary_f1', 'hd95', 'iou_per_image']
+        with open(path, 'a' if exists else 'w', newline='', encoding='utf-8') as f:
+            w = _csv.DictWriter(f, fieldnames=fields)
+            if not exists:
+                w.writeheader()
+            for r in rows:
+                w.writerow({k: r.get(k, '') for k in fields})
+        print(f'\n{"appended to" if exists else "wrote"} {a.csv}')
 
 
 if __name__ == '__main__':

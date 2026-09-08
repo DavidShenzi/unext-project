@@ -92,6 +92,7 @@ Full detail: [`project_notes.md`](project_notes.md) §7 · per-run log: [`unext/
     ├── normal_eval.py          false positives on the 133 healthy scans
     ├── threshold_sweep.py      false positives vs lesion IoU across thresholds
     ├── boundary_eval.py        boundary F1 + Hausdorff-95
+    ├── boundary.csv            boundary metrics per run
     ├── run_queue.py            unattended job queue
     ├── make_figures.py         all presentation figures
     ├── make_pptx.py            builds the deck
@@ -204,7 +205,10 @@ python normal_eval.py --csv normals.csv
 python threshold_sweep.py
 
 # boundary-quality metrics: boundary F1 in a tolerance band, plus Hausdorff-95
-python boundary_eval.py --runs best
+python boundary_eval.py --runs best --csv boundary.csv
+
+# or compare a modification against its baseline on all three splits at once
+python boundary_eval.py --compare wave --csv boundary.csv
 
 # regenerate every presentation figure
 python make_figures.py

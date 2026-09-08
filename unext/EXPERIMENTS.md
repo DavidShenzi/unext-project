@@ -415,3 +415,40 @@ Attempting to stop the stale queue process so the controls could run first was b
 the sandbox, correctly -- that is not a decision to take unattended. The recommended
 manual action is to stop the running `run_queue.py` (and its `train.py` child) and start
 `python run_queue.py`, which skips completed jobs and begins with the controls.
+
+### 7.9 Validity check on the modification runs
+
+Auditing every run's config before trusting the numbers turned up one defect worth
+stating plainly.
+
+**Seed confound on splits 42 and 43.** Every baseline run (`_aug`, `_ftl`) uses
+`seed = 41` and varies only `split_seed`. The modification runs queued in this session
+used `seed = split_seed`, i.e. 41/42/43:
+
+| split | baseline seed | modification seed | comparison |
+|---|---|---|---|
+| 41 | 41 | 41 | clean |
+| 42 | 41 | 42 | confounded with initialisation |
+| 43 | 41 | 43 | confounded with initialisation |
+
+So on two of three splits the architecture change is entangled with an initialisation
+change. This does not overturn either conclusion -- both modifications were nulls, and
+adding init noise makes a null easier to obtain, not harder -- but the effect sizes are
+noisier than a clean paired design would give, and the p-values are correspondingly
+weaker. Any future run should pass `--seed 41` explicitly to match the baselines.
+
+**The noise floor matters more than the effect sizes.** Comparing `busi_split41_wave`
+(seed 41) against `busi_split41_wave_s101` (seed 101) at matched epoch 178 gives a
+difference of **0.0062** from the initialisation alone. Both modifications' measured
+effects -- -0.0014 for the wavelet mixer, +0.0015 for the boundary gate -- are *smaller
+than the spread produced by changing the random seed*. At n = 3 splits, effects this size
+are not measurable with this protocol, whatever the architecture does.
+
+That is the honest headline for both modifications, and it is a stronger statement than
+either individual p-value: not "we failed to find an effect", but "an effect of this size
+is below the resolution of the experiment".
+
+**Also incomplete on disk** (pre-existing, unrelated to this session): `busi_split41`
+(251/400), `busi_split42` and `busi_split43` (150/400), `busi_split43_SEft` (31/100).
+These are the runs already flagged in section 5 as lacking `eval.yml`; they are truncated
+in the logs too, and any figure using them should say so.

@@ -8,6 +8,8 @@ Outputs to figures/:
   fig5_efficiency.png    params vs CPU latency, UNeXt vs TransUNet
   fig6_cumulative.png    both training-recipe changes stacked, per split
   fig7_precision_recall.png  what Focal Tversky traded
+  fig9_wavelet_structure.png shifted-MLP block vs the wavelet mixer
+  fig10_healthy_tissue.png   false positives on the 133 healthy scans
 
 Every figure except fig4 builds from the committed models/*/log.csv alone.
 fig4 additionally needs the BUSI dataset and a trained checkpoint (neither is in
@@ -494,10 +496,175 @@ def fig8_modifications():
     plt.close(fig)
 
 
+def fig9_wavelet_structure():
+    """The actual structure of the wavelet mixer, read off archs.py.
+
+    Accuracy matters more than tidiness here: LL goes through the UNeXt MLP at half
+    resolution (which is where the FLOP saving comes from -- 4x fewer tokens), while the
+    three detail bands each get a dilated depthwise conv applied *residually*, and those
+    convs are zero-initialised so the block starts life as a plain low-pass MLP.
+    """
+    NL = chr(10)
+    fig, (axL, axR) = plt.subplots(1, 2, figsize=(13.4, 5.4),
+                                   gridspec_kw={'width_ratios': [1, 1.55]})
+    for ax in (axL, axR):
+        ax.set_xlim(0, 10)
+        ax.set_ylim(0, 10)
+        ax.axis('off')
+
+    def box(ax, x, y, w, h, label, fc='white', ec='black', fs=9, lw=1.1, bold=False):
+        ax.add_patch(plt.Rectangle((x, y), w, h, facecolor=fc, edgecolor=ec,
+                                   linewidth=lw, zorder=2))
+        ax.text(x + w / 2, y + h / 2, label, ha='center', va='center', fontsize=fs,
+                zorder=3, fontweight='bold' if bold else 'normal', linespacing=1.3)
+
+    def arr(ax, x1, y1, x2, y2, color='black', lw=1.1):
+        ax.annotate('', xy=(x2, y2), xytext=(x1, y1), zorder=1,
+                    arrowprops=dict(arrowstyle='-|>', lw=lw, color=color,
+                                    shrinkA=0, shrinkB=0))
+
+    # ---------------- left: shiftmlp ----------------
+    axL.set_title("UNeXt's shifted MLP", fontsize=12.5, fontweight='bold', pad=10)
+    box(axL, 2.0, 8.5, 6.0, 0.85, 'tokens   (B, H x W, C)', fc='#f0f0f0')
+    box(axL, 2.0, 7.0, 6.0, 0.95, 'shift channel groups, height' + NL + '(torch.roll)',
+        fc='#eaf3fb')
+    box(axL, 2.0, 5.5, 6.0, 0.95, 'Linear  ->  depthwise conv  ->  GELU', fc='white')
+    box(axL, 2.0, 4.0, 6.0, 0.95, 'shift channel groups, width' + NL + '(torch.roll)',
+        fc='#eaf3fb')
+    box(axL, 2.0, 2.5, 6.0, 0.95, 'Linear', fc='white')
+    for y1, y2 in ((8.5, 7.95), (7.0, 6.45), (5.5, 4.95), (4.0, 3.45)):
+        arr(axL, 5.0, y1, 5.0, y2)
+    axL.text(5.0, 1.7, 'every token goes through the MLP' + NL + 'at full resolution',
+             ha='center', va='center', fontsize=9.5, style='italic')
+    axL.text(5.0, 0.85, 'H x W tokens', ha='center', va='center', fontsize=10.5,
+             fontweight='bold', color=C_BASE)
+
+    # ---------------- right: wavemlp ----------------
+    axR.set_title('Our wavelet mixer', fontsize=12.5, fontweight='bold', pad=10)
+    box(axR, 2.6, 8.9, 4.8, 0.8, 'tokens   (B, H x W, C)', fc='#f0f0f0')
+    arr(axR, 5.0, 8.9, 5.0, 8.45)
+    box(axR, 1.6, 7.6, 6.8, 0.85, 'Haar DWT   (fixed weights, no parameters)',
+        fc='#e6f7f9', bold=True)
+
+    xs = [0.35, 2.85, 5.35, 7.85]
+    tags = [('LL', 'low freq', '#d9edf7', C_BASE),
+            ('LH', 'horiz. edges', 'white', 'black'),
+            ('HL', 'vert. edges', 'white', 'black'),
+            ('HH', 'diagonal' + NL + '= speckle', '#fdecea', C_PAPER)]
+    for (tag, sub, fc, ec), x in zip(tags, xs):
+        arr(axR, 5.0, 7.6, x + 0.9, 6.9)
+        box(axR, x, 5.95, 1.8, 0.95, tag + NL + sub, fc=fc, fs=8.5,
+            bold=(tag in ('LL', 'HH')), ec=ec, lw=1.6 if tag in ('LL', 'HH') else 1.1)
+
+    # LL -> the same MLP, at half resolution
+    arr(axR, 1.25, 5.95, 1.25, 5.35)
+    box(axR, 0.05, 3.95, 2.4, 1.4,
+        'the SAME MLP' + NL + 'Linear -> DWConv' + NL + '-> GELU -> Linear',
+        fc='white', fs=8.3, lw=1.6, ec=C_BASE)
+    axR.text(1.25, 5.62, 'at HALF resolution', ha='center', fontsize=8.4,
+             style='italic', color=C_BASE, fontweight='bold')
+
+    # detail bands -> dilated depthwise conv, applied residually
+    for x in xs[1:]:
+        arr(axR, x + 0.9, 5.95, x + 0.9, 5.35)
+        box(axR, x + 0.05, 4.45, 1.7, 0.9,
+            'dilated' + NL + 'depthwise 3x3', fc='white', fs=8)
+        axR.annotate('', xy=(x + 1.78, 4.1), xytext=(x + 1.78, 5.8), zorder=1,
+                     arrowprops=dict(arrowstyle='-|>', lw=1.0, color='gray',
+                                     connectionstyle='arc3,rad=-0.5'))
+        axR.text(x + 2.06, 4.9, '+', fontsize=13, color='gray', fontweight='bold')
+        arr(axR, x + 0.9, 4.45, x + 0.9, 4.05)
+
+    arr(axR, 1.25, 3.95, 4.2, 3.18)
+    for x in xs[1:]:
+        arr(axR, x + 0.9, 4.05, 5.5, 3.2)
+    box(axR, 1.6, 2.3, 6.8, 0.85, 'inverse Haar transform  ->  tokens back out',
+        fc='#e6f7f9')
+    axR.text(5.0, 1.6, 'the MLP now sees 4x fewer tokens  ->  9% fewer GFLOPs',
+             ha='center', va='center', fontsize=10.5, fontweight='bold', color=C_BASE)
+    axR.text(5.0, 0.82,
+             'detail convs start at zero: the block begins as a plain low-pass MLP.' + NL +
+             'after training, the network had halved the HH (speckle) band in every block.',
+             ha='center', va='center', fontsize=8.8, style='italic', color=C_PAPER)
+
+    fig.tight_layout()
+    fig.savefig(f'{OUT}/fig9_wavelet_structure.png')
+    plt.close(fig)
+
+
+def fig10_healthy_tissue():
+    """False positives on the 133 healthy scans: every run, wavelet vs baseline.
+
+    A dot plot rather than bars, because the point is the *distribution* -- the two
+    groups separate but overlap, and a mean-only chart would hide that the best
+    baseline ties the middle of the wavelet group.
+    """
+    nm = pd.read_csv('normals.csv')
+    rt = pd.read_csv('results_table.csv')[['run', 'arch']]
+    d = nm.merge(rt, on='run', how='left', suffixes=('', '_rt'))
+    arch = d['arch_rt'] if 'arch_rt' in d else d['arch']
+
+    is_wave = arch == 'UNext_Wave'
+    is_base = (arch == 'UNext') & d['run'].str.contains('_aug|_cont|_ftl', regex=True)
+    wave = d.loc[is_wave, 'clean_rate'].to_numpy() * 100
+    base = d.loc[is_base, 'clean_rate'].to_numpy() * 100
+
+    fig, (ax, ax2) = plt.subplots(1, 2, figsize=(12.6, 4.4),
+                                  gridspec_kw={'width_ratios': [1.15, 1]})
+
+    rng = np.random.default_rng(0)
+    for i, (vals, lbl, col) in enumerate([(base, f'Baseline UNeXt\n(n={len(base)})', C_AUG),
+                                          (wave, f'Wavelet mixer\n(n={len(wave)})', C_WAVE)]):
+        x = np.full(len(vals), i) + rng.uniform(-0.07, 0.07, len(vals))
+        ax.scatter(x, vals, s=62, color=col, edgecolor='black', linewidth=0.8,
+                   zorder=3, label=None)
+        ax.plot([i - 0.26, i + 0.26], [vals.mean()] * 2, color='black', lw=2.2, zorder=4)
+        ax.text(i + 0.31, vals.mean(), f'mean {vals.mean():.1f}%', va='center',
+                fontsize=10, fontweight='bold')
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels([f'Baseline UNeXt\n(n={len(base)} runs)',
+                        f'Wavelet mixer\n(n={len(wave)} runs)'], fontsize=10.5)
+    ax.set_ylabel('healthy scans predicted completely clean (%)')
+    ax.set_title('Every run, on the 133 held-out healthy scans', fontsize=11.5)
+    ax.set_xlim(-0.5, 1.7)
+    ax.set_ylim(0, 22)
+    ax.axhline(base.max(), ls=':', color='gray', lw=1.2, zorder=1)
+    ax.text(-0.45, base.max() + 0.45, f'best baseline {base.max():.1f}%',
+            fontsize=8.8, color='gray')
+
+    # ---- right panel: the four matched pairs ----
+    pairs = [('busi_split41_wave', 'busi_split41_aug', 'split 41'),
+             ('busi_split41_wave_s101', 'busi_split41_aug_s101', 'split 41\nseed 101'),
+             ('busi_split42_wave', 'busi_split42_aug', 'split 42'),
+             ('busi_split43_wave', 'busi_split43_aug', 'split 43')]
+    look = nm.set_index('run')['clean_rate']
+    xs = np.arange(len(pairs))
+    bv = [look[b] * 100 for _, b, _ in pairs]
+    wv = [look[w] * 100 for w, _, _ in pairs]
+    ax2.bar(xs - 0.19, bv, 0.36, color=C_AUG, edgecolor='black', linewidth=0.8,
+            label='baseline')
+    ax2.bar(xs + 0.19, wv, 0.36, color=C_WAVE, edgecolor='black', linewidth=0.8,
+            label='wavelet')
+    for x, b, w in zip(xs, bv, wv):
+        ax2.annotate(f'+{w - b:.1f}', xy=(x, max(b, w) + 0.7), ha='center',
+                     fontsize=9.5, fontweight='bold')
+    ax2.set_xticks(xs)
+    ax2.set_xticklabels([lbl for _, _, lbl in pairs], fontsize=9.5)
+    ax2.set_ylabel('clean rate (%)')
+    ax2.set_ylim(0, 23)
+    ax2.set_title('Matched pairs: same split, same seed', fontsize=11.5)
+    ax2.legend(frameon=False, fontsize=10, loc='upper left')
+
+    fig.tight_layout()
+    fig.savefig(f'{OUT}/fig10_healthy_tissue.png')
+    plt.close(fig)
+
+
 if __name__ == '__main__':
     for fn in (fig1_overfitting, fig2_reproduction, fig3_augmentation,
                fig4_qualitative, fig5_efficiency, fig6_cumulative,
-               fig7_precision_recall, fig8_modifications):
+               fig7_precision_recall, fig8_modifications,
+               fig9_wavelet_structure, fig10_healthy_tissue):
         fn()
         print(f'  {fn.__name__} ok')
     print(f'\nwrote {len(os.listdir(OUT))} figures to {OUT}/')

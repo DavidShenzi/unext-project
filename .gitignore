@@ -96,5 +96,11 @@ unext/make_pptx.py
 unext/make_speaker_pptx.py
 unext/make_speaker_pptx_he.py
 
+# The slide-planning outline: it assigns who presents which slide and duplicates the
+# deck's content, and it goes stale every time the deck changes. Kept locally as
+# presentation_outline_LOCAL.md.
+presentation_outline.md
+*_LOCAL.md
+
 # queue logs from unattended runs (regenerable; models/ already ignored)
 unext/queue_logs/

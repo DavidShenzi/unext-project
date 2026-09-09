@@ -21,7 +21,7 @@ def parse_args():
     p.add_argument('--runs', nargs='*', default=None,
                    help='run names under models/ (default: all)')
     p.add_argument('--out_csv', default='results_table.csv')
-    p.add_argument('--out_png', default='curves.png')
+    p.add_argument('--out_png', default='figures/curves.png')
     return p.parse_args()
 
 

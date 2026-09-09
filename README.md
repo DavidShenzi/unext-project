@@ -77,28 +77,35 @@ Full detail: [`project_notes.md`](project_notes.md) §7 · per-run log: [`unext/
 ├── enhancement_research.md     follow-up literature review
 ├── UNeXt_presentation.pptx     the deck, notes-free (speaker notes are kept locally, not committed)
 └── unext/
-    ├── archs.py                UNext, UNext_S, UNext_SE, UNext_SkipFusion,
-    │                           UNext_Wave, UNext_Boundary
-    ├── train.py                training loop
-    ├── val.py                  evaluation + GFLOPs/latency benchmarks
-    ├── losses.py               BCEDice, FocalTversky, BCEFocalTversky
+    ├── README.md                setup notes specific to this code
+    ├── requirements.txt          pip dependencies (torch excluded, see below)
+    ├── archs.py                  UNext, UNext_S, UNext_SE, UNext_SkipFusion,
+    │                             UNext_Wave, UNext_Boundary
+    ├── train.py                  training loop
+    ├── val.py                    evaluation + GFLOPs/latency benchmarks
+    ├── losses.py                 BCEDice, FocalTversky, BCEFocalTversky
     ├── dataset.py  metrics.py  utils.py
-    ├── prepare_busi.py         raw BUSI → loader layout
-    ├── prepare_isic.py         raw ISIC 2018 → loader layout
-    ├── smoke_test.py           architecture checks, no data needed
-    ├── compare_runs.py         results table + curves
-    ├── analyze_mods.py         paired comparisons + paired t-tests
-    ├── normal_eval.py          false positives on the 133 healthy scans
-    ├── threshold_sweep.py      false positives vs lesion IoU across thresholds
-    ├── boundary_eval.py        boundary F1 + Hausdorff-95
-    ├── boundary.csv            boundary metrics per run
-    ├── run_queue.py            unattended job queue
-    ├── make_figures.py         all presentation figures
-    ├── EXPERIMENTS.md          per-run log: what was run, what it scored
-    ├── results_table.csv       every run, every metric
-    ├── normals.csv             false-positive burden per run
-    ├── models/<run>/           config.yml + log.csv + eval.yml (weights gitignored)
-    └── figures/                generated figures
+    ├── prepare_busi.py           raw BUSI → loader layout
+    ├── prepare_isic.py           raw ISIC 2018 → loader layout
+    ├── smoke_test.py             architecture checks, no data needed
+    ├── compare_runs.py           results table + curves
+    ├── analyze_mods.py           paired comparisons + paired t-tests
+    ├── normal_eval.py            false positives on the 133 healthy scans
+    ├── threshold_sweep.py        false positives vs lesion IoU across thresholds
+    ├── boundary_eval.py          boundary F1 + Hausdorff-95
+    ├── pr_eval.py                precision/recall per run, both conventions
+    ├── strip_notes.py            removes speaker notes before a deck is committed
+    ├── run_queue.py              unattended job queue
+    ├── make_figures.py           all presentation figures
+    ├── EXPERIMENTS.md            per-run log: what was run, what it scored
+    ├── results_table.csv         every run, every metric
+    ├── normals.csv                false-positive burden per run
+    ├── boundary.csv               boundary metrics per run
+    ├── precision_recall.csv       precision/recall per run
+    ├── threshold_sweep.csv        false positives vs IoU across thresholds
+    ├── log_512_amp_stopped_ep173.csv   AMP-vs-noAMP comparison data (EXPERIMENTS.md §7.x)
+    ├── models/<run>/              config.yml + log.csv + eval.yml (weights gitignored)
+    └── figures/                   generated figures, incl. curves.png
 ```
 
 **Not in git** (see `.gitignore`): the BUSI dataset (redistribution + 460 MB),
@@ -140,7 +147,7 @@ archive: the false-positive evaluation reads the `normal` cases directly from it
 ```bash
 python train.py --dataset busi --arch UNext --name base --epochs 400 --split_seed 41
 python val.py --name base            # -> models/base/eval.yml (IoU/Dice, GFLOPs, latency)
-python compare_runs.py               # every run -> results_table.csv + curves.png
+python compare_runs.py               # every run -> results_table.csv + figures/curves.png
 python analyze_mods.py               # paired per-split comparisons + t-tests
 ```
 

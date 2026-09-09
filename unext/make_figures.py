@@ -334,30 +334,42 @@ def fig6_cumulative():
 
 
 def fig7_precision_recall():
-    """What Focal Tversky actually traded: precision for recall."""
-    fig, ax = plt.subplots(figsize=(7.2, 4.3))
-    metrics = ['Recall\n(tumour pixels found)', 'Precision\n(predictions correct)']
-    bce = [0.7882, 0.7928]
-    ftl = [0.8536, 0.7510]
-    x = np.arange(2); w = 0.32
-    ax.bar(x - w/2, bce, w, color=C_AUG, edgecolor='black', lw=0.9, label='BCE + Dice')
-    ax.bar(x + w/2, ftl, w, color=C_FTL, edgecolor='black', lw=0.9,
-           label='BCE + Focal Tversky')
-    for i in range(2):
-        ax.text(x[i] - w/2, bce[i] + 0.012, f'{bce[i]:.3f}', ha='center', fontsize=10)
-        ax.text(x[i] + w/2, ftl[i] + 0.012, f'{ftl[i]:.3f}', ha='center', fontsize=10)
-    # green where we gained, red where we paid -- the trade is the whole story
-    ax.text(0, 0.945, f'+{ftl[0]-bce[0]:.3f}', fontsize=13, ha='center',
-            fontweight='bold', color=C_FTL)
-    ax.text(1, 0.945, f'{ftl[1]-bce[1]:.3f}', fontsize=13, ha='center',
-            fontweight='bold', color=C_PAPER)
-    ax.set_xticks(x); ax.set_xticklabels(metrics, fontsize=10.5)
-    ax.set_ylabel('Score'); ax.set_ylim(0, 1.10)
-    ax.set_title('Focal Tversky trades precision for recall — by design',
-                 fontsize=12, pad=12)
-    # legend above the bars; the plot area below is fully occupied
-    ax.legend(frameon=False, fontsize=10, loc='upper center', ncol=2,
-              bbox_to_anchor=(0.5, 1.005))
+    """What Focal Tversky traded, measured across all six paired runs.
+
+    An earlier version hardcoded recall 0.7882 -> 0.8536 and precision 0.7928 -> 0.7510.
+    Those came from one split (busi_split43_ftl) and were about four times the size of
+    the real effect; pr_eval.py now measures every pair and writes precision_recall.csv.
+    The per-pair view is kept deliberately -- the mean hides that one pair moves the
+    other way on recall.
+    """
+    df = pd.read_csv('precision_recall.csv').set_index('run')
+    pairs = [(f'busi_split{s}_ftl{sfx}', f'busi_split{s}_aug{sfx}',
+              f'split {s}' + (chr(10) + 'seed 101' if sfx else ''))
+             for sfx in ('', '_s101') for s in (41, 42, 43)]
+    pairs = [p for p in pairs if p[0] in df.index and p[1] in df.index]
+
+    dr = [df.loc[f, 'recall'] - df.loc[a, 'recall'] for f, a, _ in pairs]
+    dp = [df.loc[f, 'precision'] - df.loc[a, 'precision'] for f, a, _ in pairs]
+    labels = [l for _, _, l in pairs]
+
+    fig, ax = plt.subplots(figsize=(8.4, 4.3))
+    x = np.arange(len(pairs))
+    w = 0.36
+    ax.bar(x - w / 2, dr, w, color=C_FTL, edgecolor='black', lw=0.9, label='recall')
+    ax.bar(x + w / 2, dp, w, color=C_PAPER, edgecolor='black', lw=0.9, label='precision')
+    ax.axhline(0, color='black', lw=1.0)
+    ax.axhline(np.mean(dr), color=C_FTL, ls='--', lw=1.2, alpha=0.8)
+    ax.axhline(np.mean(dp), color=C_PAPER, ls='--', lw=1.2, alpha=0.8)
+    ax.text(len(pairs) - 0.35, np.mean(dr), f'  mean {np.mean(dr):+.3f}',
+            color=C_FTL, fontsize=9.5, va='bottom', fontweight='bold')
+    ax.text(len(pairs) - 0.35, np.mean(dp), f'  mean {np.mean(dp):+.3f}',
+            color=C_PAPER, fontsize=9.5, va='top', fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, fontsize=9.5)
+    ax.set_ylabel('change vs the same run without Focal Tversky')
+    ax.set_title('Focal Tversky: a small shift toward recall, not a consistent one',
+                 fontsize=12, pad=10)
+    ax.legend(frameon=False, fontsize=10, loc='upper left')
     fig.tight_layout()
     fig.savefig(f'{OUT}/fig7_precision_recall.png')
     plt.close(fig)

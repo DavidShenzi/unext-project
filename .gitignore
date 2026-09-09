@@ -77,5 +77,24 @@ nohup.out
 # the committed deck carries names only.
 *_SUBMIT.pptx
 
+# ---------------------------------------------------------------- speaker notes
+# Working material, not a deliverable: rehearsal phrasing, planned answers to
+# questions, and candid notes about our own mistakes. None of it goes to a public
+# repo or to the course.
+#
+#   *_NOTES.pptx          the presenting copy, with notes in the notes pane
+#   UNeXt_speaker_notes*  the standalone notes decks (English and Hebrew)
+#   make_pptx.py          the generators embed that same note text as source
+#   make_speaker_pptx*.py
+#
+# The committed UNeXt_presentation.pptx is produced by strip_notes.py, which removes
+# the notesSlide parts entirely rather than blanking them, and verifies the result.
+*_NOTES.pptx
+UNeXt_speaker_notes.pptx
+UNeXt_speaker_notes_HE.pptx
+unext/make_pptx.py
+unext/make_speaker_pptx.py
+unext/make_speaker_pptx_he.py
+
 # queue logs from unattended runs (regenerable; models/ already ignored)
 unext/queue_logs/

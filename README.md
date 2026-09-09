@@ -75,8 +75,7 @@ Full detail: [`project_notes.md`](project_notes.md) §7 · per-run log: [`unext/
 ```
 ├── project_notes.md            paper theory, all results, slide narrative
 ├── enhancement_research.md     follow-up literature review
-├── presentation_outline.md     slide-by-slide outline
-├── UNeXt_presentation.pptx     the deck (speaker notes in every slide)
+├── UNeXt_presentation.pptx     the deck, notes-free (speaker notes are kept locally, not committed)
 └── unext/
     ├── archs.py                UNext, UNext_S, UNext_SE, UNext_SkipFusion,
     │                           UNext_Wave, UNext_Boundary
@@ -95,9 +94,6 @@ Full detail: [`project_notes.md`](project_notes.md) §7 · per-run log: [`unext/
     ├── boundary.csv            boundary metrics per run
     ├── run_queue.py            unattended job queue
     ├── make_figures.py         all presentation figures
-    ├── make_pptx.py            builds the deck
-    ├── make_speaker_pptx.py    speaker notes (English)
-    ├── make_speaker_pptx_he.py speaker notes (Hebrew, RTL)
     ├── EXPERIMENTS.md          per-run log: what was run, what it scored
     ├── results_table.csv       every run, every metric
     ├── normals.csv             false-positive burden per run
@@ -121,11 +117,9 @@ cd unext
 python smoke_test.py                         # architecture checks — no data needed
 ```
 
-`smoke_test.py` instantiates `UNext`, `UNext_S` and `UNext_SE` at 256² and 512², and checks
-output shapes, a backward pass and the parameter counts against the paper's stated 1.47 M. If it
-passes, the install is working even without the dataset. (It predates the wavelet and boundary
-architectures and does not cover them; `python -c "import archs"` plus a training run is the
-check for those.)
+`smoke_test.py` instantiates `UNext`, `UNext_S` and `UNext_SE`, checking output shapes, a
+backward pass, and the parameter count against the paper's stated 1.47 M. If it passes, the
+install works even without the dataset. (It predates the wavelet/boundary architectures.)
 
 ### 2. Get the data
 
@@ -139,94 +133,39 @@ python prepare_busi.py --raw /path/to/Dataset_BUSI_with_GT
 
 This writes `inputs/busi/{images,masks}` and excludes the 133 `normal` (empty-mask) images,
 giving 437 benign + 210 malignant = **647**, matching the paper's stated count. Keep the raw
-archive: the false-positive evaluation below reads the `normal` cases directly from it.
+archive: the false-positive evaluation reads the `normal` cases directly from it.
 
-### 3. Train
-
-Every run writes `models/<name>/` containing `config.yml`, `log.csv` (per-epoch metrics),
-`summary.yml` and `model.pth`. A run is reproducible from its own `config.yml`.
+### 3. Train, evaluate, analyze
 
 ```bash
-# the paper's recipe — the reproduction baseline
 python train.py --dataset busi --arch UNext --name base --epochs 400 --split_seed 41
-
-# our best configuration
-python train.py --dataset busi --arch UNext --name best --epochs 400 --split_seed 41 \
-                --aug strong
-
-# the wavelet mixer (trains from scratch — no baseline to graft onto)
-python train.py --dataset busi --arch UNext_Wave --name wave --epochs 400 \
-                --seed 41 --split_seed 41 --aug strong
-
-# a grafted modification: start from a trained checkpoint, train only the new layers
-python train.py --dataset busi --arch UNext_Boundary --name bnd --epochs 100 \
-                --seed 41 --split_seed 41 --aug strong \
-                --init_from models/best/model.pth --skip_identity_init True \
-                --freeze_except fuse --lr 1e-3
+python val.py --name base            # -> models/base/eval.yml (IoU/Dice, GFLOPs, latency)
+python compare_runs.py               # every run -> results_table.csv + curves.png
+python analyze_mods.py               # paired per-split comparisons + t-tests
 ```
 
-Key flags:
-
-| flag | what it does |
-|---|---|
-| `--arch` | `UNext`, `UNext_S`, `UNext_SE`, `UNext_SkipFusion`, `UNext_Wave`, `UNext_Boundary` |
-| `--aug` | `paper` (flips + 90° rotations) or `strong` (adds affine, brightness/contrast, gamma, elastic) |
-| `--loss` | `BCEDiceLoss` (default) or `BCEFocalTverskyLoss` |
-| `--seed` | weight initialisation — **vary this to measure the noise floor** |
-| `--split_seed` | which images land in validation — vary this for a different data split |
-| `--init_from` | graft from an existing checkpoint (`strict=False`, so new layers are allowed) |
-| `--freeze_except` | comma-separated name fragments; everything else is frozen |
-| `--stop_after` | halt early without changing the cosine schedule's `T_max` |
-| `--resume` | continue an interrupted run from its full-state checkpoint |
+Every run writes `models/<name>/` (`config.yml`, `log.csv`, `summary.yml`, `model.pth`) and is
+reproducible from its own `config.yml`. Run `python train.py --help` for the full flag list —
+architectures (`--arch`), augmentation strength, loss, checkpoint grafting (`--init_from`,
+`--freeze_except`), and resume/stop controls.
 
 **Pair runs correctly.** A comparison is only clean when the two runs share **both** `--seed`
-and `--split_seed` and differ in exactly one factor. Two of our four wavelet pairs violate this
-(see the caveat above); it is the single easiest mistake to make here.
+and `--split_seed` and differ in exactly one factor — the single easiest mistake to make here
+(two of our four wavelet pairs violate it; see the caveat above).
 
-### 4. Evaluate
-
-```bash
-python val.py --name best          # IoU/Dice (both conventions), GFLOPs, CPU+GPU latency
-                                   # -> models/best/eval.yml
-python compare_runs.py             # every run -> results_table.csv + curves.png
-python analyze_mods.py             # paired per-split comparisons + paired t-tests
-```
-
-`val.py` must be run per model; `results_table.csv` is blank for any run without an `eval.yml`.
-
-### 5. The extra analyses
+### 4. Extra analyses and figures
 
 ```bash
-# false positives on the 133 held-out healthy scans (inference only, no training)
-python normal_eval.py --csv normals.csv
-
-# is the wavelet advantage just a lower operating point? sweep the threshold and
-# measure false positives and lesion IoU together
-python threshold_sweep.py
-
-# boundary-quality metrics: boundary F1 in a tolerance band, plus Hausdorff-95
-python boundary_eval.py --runs best --csv boundary.csv
-
-# or compare a modification against its baseline on all three splits at once
-python boundary_eval.py --compare wave --csv boundary.csv
-
-# regenerate every presentation figure
-python make_figures.py
-```
-
-### 6. Build the decks
-
-```bash
-python make_pptx.py              # -> UNeXt_presentation.pptx      (16 slides)
-python make_speaker_pptx.py      # -> UNeXt_speaker_notes.pptx     (English)
-python make_speaker_pptx_he.py   # -> UNeXt_speaker_notes_HE.pptx  (Hebrew, RTL)
+python normal_eval.py --csv normals.csv        # false positives on the 133 healthy scans
+python threshold_sweep.py                      # false positives vs lesion IoU across thresholds
+python boundary_eval.py --runs base --csv boundary.csv   # boundary F1 + Hausdorff-95
+python make_figures.py                          # regenerate every presentation figure
 ```
 
 ### Running many jobs unattended
 
-`run_queue.py` runs a priority-ordered job list one at a time, survives individual failures,
-retries once at a smaller batch size on CUDA OOM, and skips jobs already complete — so it is
-safe to restart.
+`run_queue.py` runs a priority-ordered job list one at a time, retries once at a smaller batch
+size on CUDA OOM, and skips jobs already complete — safe to restart.
 
 ```bash
 python run_queue.py --dry-run    # print the plan, run nothing
